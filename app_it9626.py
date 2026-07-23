@@ -113,13 +113,13 @@ if 'practical_results' not in st.session_state:
 # --- 5. UI LAYOUT ---
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
-st.subheader("💻 9626 Information Technology PYP Platform")
+st.subheader("💻 9626 Information Technology PYP Archive")
 
 # Sidebar
 with st.sidebar:
-    st.header("Basket Summary")
+    st.header("CART Handouts")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
-    if st.button("🗑️ Clear Basket"):
+    if st.button("🗑️ Clear Cart"):
         st.session_state.handout_basket = []
         st.rerun()
 
@@ -127,7 +127,7 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Theory Search (P1 & P3)", 
     "⚙️ Practical Search (P2 & P4)", 
-    "🛒 Handout Basket", 
+    "🛒 Handout Compilation", 
     "📦 Source Files (ZIP)", 
     "🔒 Admin Panel"
 ])
