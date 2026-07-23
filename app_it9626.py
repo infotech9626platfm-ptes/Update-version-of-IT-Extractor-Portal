@@ -59,7 +59,7 @@ def get_drive_service():
 def upload_file_to_drive(file_bytes, filename, folder_id):
     """
     Uploads a file directly from memory using MediaIoBaseUpload.
-    Prevents ResumableUploadError in Streamlit Cloud environments.
+    Uses supportsAllDrives=True to bypass service account quota restrictions.
     """
     service = get_drive_service()
     if not service:
@@ -77,18 +77,19 @@ def upload_file_to_drive(file_bytes, filename, folder_id):
         # Determine MIME type based on file extension
         mime_type = 'application/pdf' if filename.endswith('.pdf') else 'application/zip'
         
-        # Direct in-memory media handler
+        # Direct in-memory media handler (resumable=False avoids cloud stream errors)
         media = MediaIoBaseUpload(
             file_stream, 
             mimetype=mime_type, 
             resumable=False
         )
 
-        # Send API request to create the file in Drive
+        # Send API request with supportsAllDrives=True parameter
         uploaded_file = service.files().create(
             body=file_metadata,
             media_body=media,
-            fields='id'
+            fields='id',
+            supportsAllDrives=True
         ).execute()
 
         return uploaded_file.get('id')
@@ -326,18 +327,22 @@ with tab5:
 
         if st.button("🚀 Upload File to Drive", type="primary"):
             if uploaded_file:
-                with st.spinner("Uploading to Google Drive..."):
+                with st.spinner("Uploading file..."):
                     file_bytes = uploaded_file.read()
+                    
+                    # Always save locally first so search works immediately
+                    local_save_path = os.path.join(local_dest, uploaded_file.name)
+                    with open(local_save_path, "wb") as f:
+                        f.write(file_bytes)
+                    st.info(f"📁 Mirrored file locally to `{local_dest}/{uploaded_file.name}`.")
+
+                    # Upload to Drive
                     file_id = upload_file_to_drive(file_bytes, uploaded_file.name, target_folder_id)
 
                     if file_id:
-                        st.success(f"✅ Uploaded `{uploaded_file.name}` to Drive! (ID: `{file_id}`)")
-
-                        # Save local copy for indexing
-                        local_save_path = os.path.join(local_dest, uploaded_file.name)
-                        with open(local_save_path, "wb") as f:
-                            f.write(file_bytes)
-                        st.info(f"📁 Mirrored file locally to `{local_dest}/{uploaded_file.name}`.")
+                        st.success(f"✅ Uploaded `{uploaded_file.name}` to Google Drive! (ID: `{file_id}`)")
+                    else:
+                        st.warning("⚠️ File saved locally, but Google Drive upload was skipped due to quota limits on standard personal Drive folders.")
             else:
                 st.error("Please select a file to upload.")
 
