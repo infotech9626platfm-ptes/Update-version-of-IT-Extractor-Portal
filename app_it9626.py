@@ -1,42 +1,49 @@
 import os
+import io
 import fitz  # PyMuPDF
 import streamlit as st
 from docx import Document
 from docx.shared import Inches
-from io import BytesIO
 
-# Google Drive API Libraries
+# Google API Libraries
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseUpload
 
-# --- 1. CONFIGURATION & GOOGLE DRIVE FOLDER MAPPING ---
+# ==========================================
+# 1. CONFIGURATION & DRIVE FOLDER MAPPING
+# ==========================================
 SYLLABUS_CODE = "9626"
 
-# Google Drive Folder IDs mapped to your specific folder links
+# Google Drive Folder IDs mapped to your specific folders
 FOLDER_IDS = {
     "theory": "1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB",      # Theory Papers (P1 & P3)
     "practical": "1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7",   # Practical Papers (P2 & P4)
     "zips": "1AsXq8TktyqajB7XTa9SQ5f85Pr6CQcFJ"          # Source Files (.zip)
 }
 
-# Local storage directories
+# Local directories for mirroring files
 LOCAL_FOLDERS = {
     "theory": "9626_theory",
     "practical": "9626_practical",
     "zips": "9626_zips"
 }
 
-# Ensure local directories exist
+# Ensure local directories exist on the server
 for folder_path in LOCAL_FOLDERS.values():
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
-# --- 2. GOOGLE DRIVE AUTHENTICATION & UPLOAD ---
+
+# ==========================================
+# 2. GOOGLE DRIVE AUTHENTICATION & UPLOAD
+# ==========================================
 def get_drive_service():
-    """Authenticates with Google Drive API via Secrets or local service account file."""
+    """
+    Authenticates with Google Drive API using Streamlit Secrets or local service_account.json.
+    """
     if "gcp_service_account" in st.secrets:
         info = dict(st.secrets["gcp_service_account"])
         creds = Credentials.from_service_account_info(info, scopes=SCOPES)
@@ -45,42 +52,58 @@ def get_drive_service():
         creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
         return build('drive', 'v3', credentials=creds)
     else:
-        st.error("Google Drive Service Account credentials not found!")
+        st.error("❌ Google Drive Service Account credentials not found!")
         return None
 
+
 def upload_file_to_drive(file_bytes, filename, folder_id):
-    """Uploads a file directly to the specified Google Drive folder."""
+    """
+    Uploads a file directly from memory using MediaIoBaseUpload.
+    Prevents ResumableUploadError in Streamlit Cloud environments.
+    """
     service = get_drive_service()
     if not service:
         return None
 
-    os.makedirs("temp_upload", exist_ok=True)
-    temp_path = os.path.join("temp_upload", filename)
-    with open(temp_path, "wb") as f:
-        f.write(file_bytes)
+    try:
+        # Wrap raw bytes in a binary stream
+        file_stream = io.BytesIO(file_bytes)
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        
+        # Determine MIME type based on file extension
+        mime_type = 'application/pdf' if filename.endswith('.pdf') else 'application/zip'
+        
+        # Direct in-memory media handler
+        media = MediaIoBaseUpload(
+            file_stream, 
+            mimetype=mime_type, 
+            resumable=False
+        )
 
-    file_metadata = {
-        'name': filename,
-        'parents': [folder_id]
-    }
-    media = MediaFileUpload(temp_path, resumable=True)
+        # Send API request to create the file in Drive
+        uploaded_file = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
 
-    uploaded_file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id'
-    ).execute()
+        return uploaded_file.get('id')
 
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
+    except Exception as error:
+        st.error(f"❌ Drive API Upload Failed: {error}")
+        return None
 
-    return uploaded_file.get('id')
 
-# --- 3. HELPER & SEARCH FUNCTIONS ---
-def search_pdfs(keyword_list, folder_path, allowed_papers):
+# ==========================================
+# 3. HELPER & SEARCH FUNCTIONS
+# ==========================================
+def search_pdfs(keyword_list, folder_path, allowed_variants):
     """
-    Scans local PDF files for matching keywords for specific paper components.
-    e.g., allowed_papers = ["11", "12", "13", "31", "32", "33"] or ["02", "04"]
+    Scans local PDF files for keywords matching allowed Cambridge variants.
     """
     results = []
     if not os.path.exists(folder_path):
@@ -88,9 +111,9 @@ def search_pdfs(keyword_list, folder_path, allowed_papers):
 
     for file in os.listdir(folder_path):
         if file.endswith(".pdf"):
-            # Ensure filename ends with one of the allowed variant codes (e.g., '_02.pdf')
             base_name = os.path.splitext(file)[0]
-            is_valid_variant = any(base_name.endswith(f"_{p}") for p in allowed_papers)
+            # Match variants like _11, _12, _13, _02, _31, _04
+            is_valid_variant = any(base_name.endswith(f"_{variant}") for variant in allowed_variants)
             
             if not is_valid_variant:
                 continue
@@ -112,7 +135,10 @@ def search_pdfs(keyword_list, folder_path, allowed_papers):
                 continue
     return results
 
-# --- 4. APP STATE INITIALIZATION ---
+
+# ==========================================
+# 4. APP STATE INITIALIZATION
+# ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
 if 'theory_results' not in st.session_state:
@@ -120,7 +146,10 @@ if 'theory_results' not in st.session_state:
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
 
-# --- 5. USER INTERFACE ---
+
+# ==========================================
+# 5. STREAMLIT UI LAYOUT
+# ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
 st.subheader("💻 9626 Information Technology PYP Platform")
@@ -133,7 +162,7 @@ with st.sidebar:
         st.session_state.handout_basket = []
         st.rerun()
 
-# Application Tabs
+# Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Theory Search (P1 & P3)", 
     "⚙️ Practical Search (P2 & P4)", 
@@ -142,7 +171,8 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 Admin Panel"
 ])
 
-# TAB 1: THEORY SEARCH (P1 & P3)
+
+# --- TAB 1: THEORY SEARCH (P1 & P3) ---
 with tab1:
     st.header("Search Theory Papers (Paper 1 & Paper 3)")
     st.caption("Variants: Paper 1 (11, 12, 13) | Paper 3 (31, 32, 33)")
@@ -152,8 +182,8 @@ with tab1:
         if keyword_t1:
             with st.spinner("Scanning Theory PDFs..."):
                 keywords = [k.strip() for k in keyword_t1.split(",") if k.strip()]
-                p1_p3_variants = ["11", "12", "13", "31", "32", "33"]
-                st.session_state.theory_results = search_pdfs(keywords, LOCAL_FOLDERS["theory"], p1_p3_variants)
+                theory_variants = ["11", "12", "13", "31", "32", "33"]
+                st.session_state.theory_results = search_pdfs(keywords, LOCAL_FOLDERS["theory"], theory_variants)
         else:
             st.warning("Please enter a keyword.")
 
@@ -167,7 +197,8 @@ with tab1:
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
 
-# TAB 2: PRACTICAL SEARCH (P2 & P4)
+
+# --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
 with tab2:
     st.header("Search Practical Papers (Paper 2 & Paper 4)")
     st.caption("Variants: Paper 2 (02) | Paper 4 (04)")
@@ -177,8 +208,8 @@ with tab2:
         if keyword_t2:
             with st.spinner("Scanning Practical PDFs..."):
                 keywords = [k.strip() for k in keyword_t2.split(",") if k.strip()]
-                p2_p4_variants = ["02", "04"]
-                st.session_state.practical_results = search_pdfs(keywords, LOCAL_FOLDERS["practical"], p2_p4_variants)
+                practical_variants = ["02", "04"]
+                st.session_state.practical_results = search_pdfs(keywords, LOCAL_FOLDERS["practical"], practical_variants)
         else:
             st.warning("Please enter a keyword.")
 
@@ -192,7 +223,8 @@ with tab2:
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
 
-# TAB 3: HANDOUT BASKET
+
+# --- TAB 3: HANDOUT BASKET ---
 with tab3:
     st.header("Worksheet / Handout Builder")
     if st.session_state.handout_basket:
@@ -210,7 +242,7 @@ with tab3:
                 pdf_doc = fitz.open(item['path'])
                 page = pdf_doc.load_page(item['page'])
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_data = BytesIO(pix.tobytes("png"))
+                img_data = io.BytesIO(pix.tobytes("png"))
                 doc.add_picture(img_data, width=Inches(6.5))
                 doc.add_page_break()
                 pdf_doc.close()
@@ -223,7 +255,8 @@ with tab3:
     else:
         st.info("Your basket is empty. Add pages from Tab 1 or Tab 2.")
 
-# TAB 4: SOURCE FILES (ZIP)
+
+# --- TAB 4: SOURCE FILES (ZIP) ---
 with tab4:
     st.header("Download Practical Source Files (ZIP)")
     c1, c2, c3 = st.columns(3)
@@ -233,7 +266,6 @@ with tab4:
         z_session = st.selectbox("Select Session", ["March (m)", "June (s)", "Nov (w)"])
         session_code = z_session.split("(")[1].replace(")", "")
     with c3:
-        # Paper 2 is variant '02', Paper 4 is variant '04'
         z_paper = st.selectbox("Select Paper Component", ["02 (Paper 2)", "04 (Paper 4)"])
         paper_code = z_paper.split()[0]
 
@@ -254,7 +286,8 @@ with tab4:
     else:
         st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Upload it via Admin Panel first.")
 
-# TAB 5: ADMIN PANEL
+
+# --- TAB 5: ADMIN PANEL ---
 with tab5:
     st.header("Admin Upload Panel")
     pwd = st.text_input("Enter Admin Password", type="password")
@@ -267,7 +300,6 @@ with tab5:
         col_a, col_b = st.columns(2)
         with col_a:
             up_year = st.number_input("Year", min_value=2018, max_value=2030, value=2026)
-            # Aligned component list to match Cambridge variants
             up_paper_num = st.selectbox(
                 "Paper Component / Variant", 
                 ["11", "12", "13", "02", "31", "32", "33", "04"]
@@ -275,7 +307,7 @@ with tab5:
             up_file_type = st.radio("File Type", ["Question Paper (qp)", "Marking Scheme (ms)", "Source File (sf/zip)"])
 
         with col_b:
-            # Automated target folder selection
+            # Automated Google Drive folder routing
             if "Source File" in up_file_type:
                 target_folder_id = FOLDER_IDS["zips"]
                 target_folder_name = "Source Files (ZIP) Folder"
@@ -294,21 +326,25 @@ with tab5:
 
         if st.button("🚀 Upload File to Drive", type="primary"):
             if uploaded_file:
-                file_bytes = uploaded_file.read()
-                file_id = upload_file_to_drive(file_bytes, uploaded_file.name, target_folder_id)
+                with st.spinner("Uploading to Google Drive..."):
+                    file_bytes = uploaded_file.read()
+                    file_id = upload_file_to_drive(file_bytes, uploaded_file.name, target_folder_id)
 
-                if file_id:
-                    st.success(f"Uploaded `{uploaded_file.name}` to Drive! (File ID: `{file_id}`)")
+                    if file_id:
+                        st.success(f"✅ Uploaded `{uploaded_file.name}` to Drive! (ID: `{file_id}`)")
 
-                    # Mirror locally for search indexing
-                    local_save_path = os.path.join(local_dest, uploaded_file.name)
-                    with open(local_save_path, "wb") as f:
-                        f.write(file_bytes)
-                    st.info(f"Saved locally to `{local_dest}/{uploaded_file.name}`.")
+                        # Save local copy for indexing
+                        local_save_path = os.path.join(local_dest, uploaded_file.name)
+                        with open(local_save_path, "wb") as f:
+                            f.write(file_bytes)
+                        st.info(f"📁 Mirrored file locally to `{local_dest}/{uploaded_file.name}`.")
             else:
                 st.error("Please select a file to upload.")
 
-# FOOTER
+
+# ==========================================
+# 6. FOOTER
+# ==========================================
 st.markdown("---")
 st.markdown(
     """
