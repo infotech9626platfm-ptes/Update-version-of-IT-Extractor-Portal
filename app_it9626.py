@@ -292,7 +292,7 @@ st.markdown("---")
 st.markdown(
     """
     <div style="text-align: center; width: 100%;">
-        <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ PTES 9626 Information Technology Resource Portal ✨</p>
+        <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ PTES 9626 Information Technology Resource Archive ✨</p>
         <p style="color: gray; font-size: 14px;">Creator: Miss Hajah Nurul Haziqah HN</p>
     </div>
     """,
