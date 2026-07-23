@@ -111,7 +111,7 @@ if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
 
 # --- 5. UI LAYOUT ---
-st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
+st.set_page_config(page_title="9626 IT Portal", layout="wide")
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
 st.subheader("💻 9626 Information Technology PYP Archive")
 
