@@ -9,7 +9,7 @@ from docx.shared import Inches
 # Google API Libraries
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
 # ==========================================
 # 1. CONFIGURATION & DRIVE FOLDER MAPPING
@@ -114,6 +114,48 @@ def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
         return None
 
 
+def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
+    """
+    Queries Google Drive for a specific folder and downloads any files missing locally.
+    Returns (downloaded_count, status_message).
+    """
+    service = build_drive_service()
+    if not service:
+        return 0, "Failed to authenticate with Google Drive."
+
+    drive_folder_id = FOLDER_IDS[folder_key]
+    local_path = LOCAL_FOLDERS[folder_key]
+
+    try:
+        # Query Google Drive for all non-trashed files in this target folder
+        query = f"'{drive_folder_id}' in parents and trashed = false"
+        results = service.files().list(q=query, fields="files(id, name, mimeType)").execute()
+        drive_files = results.get('files', [])
+
+        downloaded_count = 0
+
+        for file_info in drive_files:
+            file_name = file_info['name']
+            file_id = file_info['id']
+            local_file_path = os.path.join(local_path, file_name)
+
+            # Download only if the file does not exist locally yet
+            if not os.path.exists(local_file_path):
+                request = service.files().get_media(fileId=file_id)
+                with open(local_file_path, "wb") as f:
+                    downloader = MediaIoBaseDownload(f, request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
+                
+                downloaded_count += 1
+
+        return downloaded_count, f"Synced {downloaded_count} new file(s) for folder `{folder_key}`."
+
+    except Exception as e:
+        return 0, f"Sync error on folder `{folder_key}`: {e}"
+
+
 # ==========================================
 # 3. ADVANCED FLEXIBLE SEARCH ENGINE
 # ==========================================
@@ -205,7 +247,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⚙️ Practical Search (P2 & P4)", 
     "🛒 Handout Basket", 
     "📦 Source Files (ZIP)", 
-    "🔒 Admin Panel"
+    "🔒 Admin & Sync Panel"
 ])
 
 
@@ -321,12 +363,12 @@ with tab4:
                 mime="application/zip"
             )
     else:
-        st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Upload it via Admin Panel first.")
+        st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Use the Admin Sync button to pull newly uploaded files from Drive.")
 
 
-# --- TAB 5: ADMIN PANEL ---
+# --- TAB 5: ADMIN & SYNC PANEL ---
 with tab5:
-    st.header("Admin Upload Panel")
+    st.header("Admin & Google Drive Sync Panel")
     pwd = st.text_input("Enter Admin Password", type="password")
 
     admin_password = st.secrets.get("ADMIN_PASSWORD", "ptes123")
@@ -334,10 +376,27 @@ with tab5:
     if pwd == admin_password:
         st.success("Admin Access Granted")
         
+        # --- BULK SYNC FROM GOOGLE DRIVE ---
+        st.subheader("🔄 Bulk Sync with Google Drive")
+        st.caption("Click below if tutors uploaded files directly into your Google Drive folders.")
+        
+        if st.button("🔄 Sync All Files from Google Drive", type="primary"):
+            with st.spinner("Scanning Google Drive folders and downloading new files..."):
+                total_synced = 0
+                for f_key in ["theory", "practical", "zips"]:
+                    count, msg = sync_drive_folder_to_local(f_key)
+                    total_synced += count
+                    st.info(msg)
+                
+                st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded and ready for search!")
+
+        st.markdown("---")
+        
+        # --- MANUAL SINGLE FILE UPLOAD ---
+        st.subheader("📤 Single File Direct Upload")
         uploaded_file = st.file_uploader("Browse Past Paper PDF or Source File (ZIP)", type=["pdf", "zip"])
 
         if uploaded_file is not None:
-            # Automatic filename analysis
             folder_key, folder_name = determine_target_folder(uploaded_file.name)
 
             if folder_key is None:
@@ -348,7 +407,7 @@ with tab5:
             else:
                 st.info(f"🎯 Target Destination Detected: **{folder_name}**")
 
-                if st.button("🚀 Upload File to Drive & Mirror Locally", type="primary"):
+                if st.button("🚀 Upload File to Drive & Mirror Locally"):
                     with st.spinner("Processing file..."):
                         file_bytes = uploaded_file.read()
 
@@ -359,7 +418,7 @@ with tab5:
                             f.write(file_bytes)
                         st.info(f"📁 Mirrored file locally to `{local_dest_dir}/{uploaded_file.name}`.")
 
-                        # 2. Upload to Google Drive using OAuth 2.0 User Token
+                        # 2. Upload to Google Drive
                         target_drive_folder_id = FOLDER_IDS[folder_key]
                         drive_result = upload_file_to_drive(
                             file_bytes, 
