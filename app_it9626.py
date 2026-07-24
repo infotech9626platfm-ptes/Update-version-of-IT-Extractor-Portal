@@ -234,24 +234,32 @@ st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 # --- CUSTOM BACKGROUND COLOR STYLING ---
 # You can change this hex color code anytime!
 # Examples: "#F4F6F9" (Soft Light Gray), "#EBF3F5" (Soft Light Blue), "#1E1E2E" (Dark Mode)
-BACKGROUND_COLOR = "#FFC0CB"
+############################################################################################
+MAIN_BG_COLOR = "#FFC0CB"     # Main screen background color
+SIDEBAR_BG_COLOR = "#EBF3F5"  # Sidebar background color (slightly darker soft gray)
 
 st.markdown(
     f"""
     <style>
     /* Main application background */
     .stAppViewContainer {{
-        background-color: {BACKGROUND_COLOR};
+        background-color: {MAIN_BG_COLOR};
     }}
     
     /* Top sticky header background */
     .stHeader {{
-        background-color: {BACKGROUND_COLOR};
+        background-color: {MAIN_BG_COLOR};
+    }}
+
+    /* Sidebar background color */
+    [data-testid="stSidebar"] {{
+        background-color: {SIDEBAR_BG_COLOR};
     }}
     </style>
     """,
     unsafe_allow_html=True
 )
+#############################################################################################
 
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
 st.subheader("💻 9626 Information Technology PYP Resources")
