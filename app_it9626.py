@@ -369,69 +369,77 @@ with tab4:
 # --- TAB 5: ADMIN & SYNC PANEL ---
 with tab5:
     st.header("Admin & Google Drive Sync Panel")
-    pwd = st.text_input("Enter Your Admin Password", type="password")
 
-    admin_password = st.secrets.get("ADMIN_PASSWORD", "ptes123")
+    # Fetch admin password securely from secrets (without hardcoded defaults)
+    admin_password = st.secrets.get("ADMIN_PASSWORD")
 
-    if pwd == admin_password:
-        st.success("Admin Access Granted")
-        
-        # --- BULK SYNC FROM GOOGLE DRIVE ---
-        st.subheader("🔄 Bulk Sync with Google Drive")
-        st.caption("Click below if tutors uploaded files directly into your Google Drive folders.")
-        
-        if st.button("🔄 Sync All Files from Google Drive", type="primary"):
-            with st.spinner("Scanning Google Drive folders and downloading new files..."):
-                total_synced = 0
-                for f_key in ["theory", "practical", "zips"]:
-                    count, msg = sync_drive_folder_to_local(f_key)
-                    total_synced += count
-                    st.info(msg)
-                
-                st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded and ready for search!")
+    if not admin_password:
+        st.error(
+            "🚨 `ADMIN_PASSWORD` is not configured in your Streamlit Secrets. "
+            "Please add `ADMIN_PASSWORD = 'your_password'` to your secrets configuration."
+        )
+    else:
+        pwd = st.text_input("Enter Your Admin Password", type="password")
 
-        st.markdown("---")
-        
-        # --- MANUAL SINGLE FILE UPLOAD ---
-        st.subheader("📤 Single File Direct Upload")
-        uploaded_file = st.file_uploader("Browse Past Paper PDF or Source File (ZIP)", type=["pdf", "zip"])
+        if pwd == admin_password:
+            st.success("Admin Access Granted")
+            
+            # --- BULK SYNC FROM GOOGLE DRIVE ---
+            st.subheader("🔄 Bulk Sync with Google Drive")
+            st.caption("Click below if tutors uploaded files directly into your Google Drive folders.")
+            
+            if st.button("🔄 Sync All Files from Google Drive", type="primary"):
+                with st.spinner("Scanning Google Drive folders and downloading new files..."):
+                    total_synced = 0
+                    for f_key in ["theory", "practical", "zips"]:
+                        count, msg = sync_drive_folder_to_local(f_key)
+                        total_synced += count
+                        st.info(msg)
+                    
+                    st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded and ready for search!")
 
-        if uploaded_file is not None:
-            folder_key, folder_name = determine_target_folder(uploaded_file.name)
+            st.markdown("---")
+            
+            # --- MANUAL SINGLE FILE UPLOAD ---
+            st.subheader("📤 Single File Direct Upload")
+            uploaded_file = st.file_uploader("Browse Past Paper PDF or Source File (ZIP)", type=["pdf", "zip"])
 
-            if folder_key is None:
-                st.warning(
-                    f"⚠️ Filename `{uploaded_file.name}` does not match Cambridge naming conventions. "
-                    "Expected formats: `9626_m19_qp_12.pdf`, `9626_s20_qp_02.pdf`, or `9626_s20_sf_02.zip`."
-                )
-            else:
-                st.info(f"🎯 Target Destination Detected: **{folder_name}**")
+            if uploaded_file is not None:
+                folder_key, folder_name = determine_target_folder(uploaded_file.name)
 
-                if st.button("🚀 Upload File to Drive & Mirror Locally"):
-                    with st.spinner("Processing file..."):
-                        file_bytes = uploaded_file.read()
+                if folder_key is None:
+                    st.warning(
+                        f"⚠️ Filename `{uploaded_file.name}` does not match Cambridge naming conventions. "
+                        "Expected formats: `9626_m19_qp_12.pdf`, `9626_s20_qp_02.pdf`, or `9626_s20_sf_02.zip`."
+                    )
+                else:
+                    st.info(f"🎯 Target Destination Detected: **{folder_name}**")
 
-                        # 1. Save locally for instant search access
-                        local_dest_dir = LOCAL_FOLDERS[folder_key]
-                        local_save_path = os.path.join(local_dest_dir, uploaded_file.name)
-                        with open(local_save_path, "wb") as f:
-                            f.write(file_bytes)
-                        st.info(f"📁 Mirrored file locally to `{local_dest_dir}/{uploaded_file.name}`.")
+                    if st.button("🚀 Upload File to Drive & Mirror Locally"):
+                        with st.spinner("Processing file..."):
+                            file_bytes = uploaded_file.read()
 
-                        # 2. Upload to Google Drive
-                        target_drive_folder_id = FOLDER_IDS[folder_key]
-                        drive_result = upload_file_to_drive(
-                            file_bytes, 
-                            uploaded_file.name, 
-                            target_drive_folder_id, 
-                            uploaded_file.type
-                        )
+                            # 1. Save locally for instant search access
+                            local_dest_dir = LOCAL_FOLDERS[folder_key]
+                            local_save_path = os.path.join(local_dest_dir, uploaded_file.name)
+                            with open(local_save_path, "wb") as f:
+                                f.write(file_bytes)
+                            st.info(f"📁 Mirrored file locally to `{local_dest_dir}/{uploaded_file.name}`.")
 
-                        if drive_result:
-                            st.success(f"✅ Successfully uploaded `{uploaded_file.name}` to Google Drive!")
-                            st.markdown(f"[🔗 View File in Google Drive]({drive_result.get('webViewLink')})")
-                        else:
-                            st.error("❌ Failed to upload to Google Drive. Check your connection or secrets.")
+                            # 2. Upload to Google Drive
+                            target_drive_folder_id = FOLDER_IDS[folder_key]
+                            drive_result = upload_file_to_drive(
+                                file_bytes, 
+                                uploaded_file.name, 
+                                target_drive_folder_id, 
+                                uploaded_file.type
+                            )
+
+                            if drive_result:
+                                st.success(f"✅ Successfully uploaded `{uploaded_file.name}` to Google Drive!")
+                                st.markdown(f"[🔗 View File in Google Drive]({drive_result.get('webViewLink')})")
+                            else:
+                                st.error("❌ Failed to upload to Google Drive. Check your connection or secrets.")
 
 
 # ==========================================
