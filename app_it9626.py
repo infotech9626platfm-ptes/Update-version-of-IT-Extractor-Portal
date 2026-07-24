@@ -261,7 +261,7 @@ st.markdown(
 )
 #############################################################################################
 
-st.title("PUSAT TINGKATAN ENAM SENGKURONG")
+st.title("PUSAT TINGKATAN ENAM BRUNEI DARUSSALAM")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
 # Sidebar - Handout Basket Status
@@ -481,7 +481,7 @@ st.markdown(
     """
     <div style="text-align: center; width: 100%;">
         <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ PTES 9626 Information Technology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Creator: Miss Hajah Nurul Haziqah HN</p>
+        <p style="color: gray; font-size: 14px;">Creator: Computing Department PTES</p>
     </div>
     """,
     unsafe_allow_html=True
