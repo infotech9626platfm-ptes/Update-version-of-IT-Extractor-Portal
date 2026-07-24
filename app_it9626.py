@@ -11,7 +11,12 @@ from googleapiclient.http import MediaIoBaseUpload
 # Target Google Drive folder IDs
 FOLDER_IDS = {
     "Theory": "1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB",     # Theory Papers (P1 & P3)
+    #the link : https://drive.google.com/drive/folders/1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB?usp=sharing
+    #1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB
+    
     "Practical": "1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7"   # Practical Papers (P2 & P4)
+    #1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7
+    #the link : https://drive.google.com/drive/folders/1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7?usp=sharing
 }
 
 SCOPES = ['https://www.googleapis.com/auth/drive']
