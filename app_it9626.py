@@ -30,7 +30,7 @@ LOCAL_FOLDERS = {
     "zips": "9626_zips"
 }
 
-# Ensure local storage directories exist
+# Ensure local storage directories exist on server startup
 for folder_path in LOCAL_FOLDERS.values():
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -42,7 +42,7 @@ for folder_path in LOCAL_FOLDERS.values():
 def determine_target_folder(filename: str) -> tuple[str, str]:
     """
     Analyzes the filename using Regular Expressions to determine target folder.
-    Returns (folder_key, folder_display_name).
+    Returns a tuple of (folder_key, folder_display_name).
     """
     filename_lower = filename.lower()
     
@@ -63,7 +63,7 @@ def determine_target_folder(filename: str) -> tuple[str, str]:
 
 def build_drive_service():
     """
-    Authenticates with Google Drive API using OAuth 2.0 User Credentials from Streamlit Secrets.
+    Authenticates with Google Drive API using OAuth 2.0 User Credentials stored in Streamlit Secrets.
     """
     try:
         creds = Credentials(
@@ -115,23 +115,28 @@ def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
 
 
 # ==========================================
-# 3. SEARCH ENGINE & HELPER FUNCTIONS
+# 3. ADVANCED FLEXIBLE SEARCH ENGINE
 # ==========================================
 def search_pdfs(keyword_list, folder_path, allowed_variants):
     """
-    Scans local PDF files for keywords matching allowed Cambridge paper variants.
+    Scans local PDF files for keywords using flexible, case-insensitive matching.
+    Handles variations like 'VECTOR', 'Vector', 'vector', and plurals ('vectors').
     """
     results = []
     if not os.path.exists(folder_path):
+        return results
+
+    # Clean and prepare keyword list
+    cleaned_keywords = [k.strip().lower() for k in keyword_list if k.strip()]
+    if not cleaned_keywords:
         return results
 
     for file in os.listdir(folder_path):
         if file.endswith(".pdf"):
             base_name = os.path.splitext(file)[0]
             
-            # Filter variants like _11, _12, _13, _02, _31, _04
+            # Filter allowed paper variants (e.g., _11, _12, _13, _02, _31, _04)
             is_valid_variant = any(base_name.endswith(f"_{variant}") for variant in allowed_variants)
-            
             if not is_valid_variant:
                 continue
 
@@ -139,8 +144,22 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
             try:
                 doc = fitz.open(filepath)
                 for page_num in range(len(doc)):
-                    text = doc[page_num].get_text().lower()
-                    if all(k.lower() in text for k in keyword_list if k.strip()):
+                    page_text = doc[page_num].get_text()
+                    
+                    # Check if ALL entered keywords match on this page
+                    matches_all = True
+                    for kw in cleaned_keywords:
+                        escaped_kw = re.escape(kw)
+                        
+                        # Regex pattern: matches exact word OR common plurals (e.g. vector / vectors)
+                        pattern = r'\b' + escaped_kw + r'(s|es)?\b'
+                        
+                        # Fallback to general substring match if regex boundary misses non-standard words
+                        if not re.search(pattern, page_text, re.IGNORECASE) and kw not in page_text.lower():
+                            matches_all = False
+                            break
+                    
+                    if matches_all:
                         results.append({
                             "file": file,
                             "page": page_num,
@@ -150,6 +169,7 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
                 doc.close()
             except Exception:
                 continue
+                
     return results
 
 
@@ -179,7 +199,7 @@ with st.sidebar:
         st.session_state.handout_basket = []
         st.rerun()
 
-# Application Tabs Navigation
+# Application Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Theory Search (P1 & P3)", 
     "⚙️ Practical Search (P2 & P4)", 
@@ -317,7 +337,7 @@ with tab5:
         uploaded_file = st.file_uploader("Browse Past Paper PDF or Source File (ZIP)", type=["pdf", "zip"])
 
         if uploaded_file is not None:
-            # Run automatic filename analysis
+            # Automatic filename analysis
             folder_key, folder_name = determine_target_folder(uploaded_file.name)
 
             if folder_key is None:
