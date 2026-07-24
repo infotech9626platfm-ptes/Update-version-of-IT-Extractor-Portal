@@ -261,7 +261,7 @@ st.markdown(
 )
 #############################################################################################
 
-st.title("PUSAT TINGKATAN ENAM BRUNEI DARUSSALAM")
+st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
 # Sidebar - Handout Basket Status
