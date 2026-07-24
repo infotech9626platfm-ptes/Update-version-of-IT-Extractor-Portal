@@ -235,7 +235,7 @@ st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 # You can change this hex color code anytime!
 # Examples: "#F4F6F9" (Soft Light Gray), "#EBF3F5" (Soft Light Blue), "#1E1E2E" (Dark Mode)
 ############################################################################################
-MAIN_BG_COLOR = "#FFC0CB"     # Main screen background color
+MAIN_BG_COLOR = "#f9f0ee"     # Main screen background color
 SIDEBAR_BG_COLOR = "#FFFAA0"  # Sidebar background color (slightly darker soft gray)
 
 st.markdown(
