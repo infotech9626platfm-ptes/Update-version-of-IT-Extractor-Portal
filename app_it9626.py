@@ -266,10 +266,10 @@ with st.sidebar:
 
 # Application Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔍 Theory Search (P1 & P3)", 
-    "⚙️ Practical Search (P2 & P4)", 
-    "🛒 Collection of Added Handout", 
-    "📦 Source Files (ZIP)", 
+    "🔍 Theory Search(P1&P3)", 
+    "⚙️ Practical Search(P2&P4)", 
+    "🛒 Added Handout cart", 
+    "📦 Source Files(ZIP)", 
     "🔒 Admin & Sync Panel"
 ])
 
