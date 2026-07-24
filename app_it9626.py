@@ -234,7 +234,7 @@ st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 # --- CUSTOM BACKGROUND COLOR STYLING ---
 # You can change this hex color code anytime!
 # Examples: "#F4F6F9" (Soft Light Gray), "#EBF3F5" (Soft Light Blue), "#1E1E2E" (Dark Mode)
-BACKGROUND_COLOR = "#F4F6F9"
+BACKGROUND_COLOR = "#FFC0CB"
 
 st.markdown(
     f"""
@@ -268,9 +268,9 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Theory Search(P1&P3)", 
     "⚙️ Practical Search(P2&P4)", 
-    "🛒 Added Handout cart", 
+    "🛒 Handout Cart", 
     "📦 Source Files(ZIP)", 
-    "🔒 Admin & Sync Panel"
+    "🔒 Admin&Sync Panel"
 ])
 
 
