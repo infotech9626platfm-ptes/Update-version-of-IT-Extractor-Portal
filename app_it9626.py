@@ -231,11 +231,11 @@ if 'practical_results' not in st.session_state:
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
-st.subheader("💻 9626 Information Technology PYP Platform")
+st.subheader("💻 9626 Information Technology PYP Resources")
 
 # Sidebar - Handout Basket Status
 with st.sidebar:
-    st.header("Basket Summary")
+    st.header("Handout Basket Summary")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
     if st.button("🗑️ Clear Basket"):
         st.session_state.handout_basket = []
@@ -245,7 +245,7 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔍 Theory Search (P1 & P3)", 
     "⚙️ Practical Search (P2 & P4)", 
-    "🛒 Handout Basket", 
+    "🛒 Collection of Added Handout", 
     "📦 Source Files (ZIP)", 
     "🔒 Admin & Sync Panel"
 ])
@@ -312,7 +312,7 @@ with tab3:
         for idx, item in enumerate(st.session_state.handout_basket):
             st.write(f"{idx+1}. **{item['file']}** (Page {item['page'] + 1})")
 
-        if st.button("🪄 Export Handout to Word (.docx)", type="primary"):
+        if st.button("🪄 Export Handout to Word Document", type="primary"):
             doc = Document()
             doc.add_heading(f'PTES {SYLLABUS_CODE} IT Handout', 0)
 
@@ -330,7 +330,7 @@ with tab3:
             doc.save(target_filename)
 
             with open(target_filename, "rb") as f:
-                st.download_button("📥 Click to Download Word Document", f, file_name=target_filename)
+                st.download_button("📥 Click for final Download to Local Drive", f, file_name=target_filename)
     else:
         st.info("Your basket is empty. Add pages from Tab 1 or Tab 2.")
 
@@ -369,7 +369,7 @@ with tab4:
 # --- TAB 5: ADMIN & SYNC PANEL ---
 with tab5:
     st.header("Admin & Google Drive Sync Panel")
-    pwd = st.text_input("Enter Admin Password", type="password")
+    pwd = st.text_input("Enter Your Admin Password", type="password")
 
     admin_password = st.secrets.get("ADMIN_PASSWORD", "ptes123")
 
