@@ -227,9 +227,32 @@ if 'practical_results' not in st.session_state:
 
 
 # ==========================================
-# 5. STREAMLIT UI LAYOUT
+# 5. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
+
+# --- CUSTOM BACKGROUND COLOR STYLING ---
+# You can change this hex color code anytime!
+# Examples: "#F4F6F9" (Soft Light Gray), "#EBF3F5" (Soft Light Blue), "#1E1E2E" (Dark Mode)
+BACKGROUND_COLOR = "#F4F6F9"
+
+st.markdown(
+    f"""
+    <style>
+    /* Main application background */
+    .stAppViewContainer {{
+        background-color: {BACKGROUND_COLOR};
+    }}
+    
+    /* Top sticky header background */
+    .stHeader {{
+        background-color: {BACKGROUND_COLOR};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("PUSAT TINGKATAN ENAM SENGKURONG")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
@@ -243,11 +266,11 @@ with st.sidebar:
 
 # Application Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔍 Theory Search(P1 & P3)", 
-    "⚙️ Practical Search(P2 & P4)", 
-    "🛒 Added Handout", 
-    "📦 Source Files(ZIP)", 
-    "🔒 Admin&Sync Panel"
+    "🔍 Theory Search (P1 & P3)", 
+    "⚙️ Practical Search (P2 & P4)", 
+    "🛒 Collection of Added Handout", 
+    "📦 Source Files (ZIP)", 
+    "🔒 Admin & Sync Panel"
 ])
 
 
@@ -370,7 +393,7 @@ with tab4:
 with tab5:
     st.header("Admin & Google Drive Sync Panel")
 
-    # Fetch admin password securely from secrets (without hardcoded defaults)
+    # Securely retrieve admin password from Streamlit secrets
     admin_password = st.secrets.get("ADMIN_PASSWORD")
 
     if not admin_password:
