@@ -1,129 +1,55 @@
 import io
-import os
 import streamlit as st
-from google.oauth2.service_account import Credentials
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# ==========================================
-# 1. TARGET GOOGLE DRIVE FOLDERS
-# ==========================================
-# Target Google Drive folder IDs
-FOLDER_IDS = {
-    "Theory": "1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB",     # Theory Papers (P1 & P3)
-    #the link : https://drive.google.com/drive/folders/1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB?usp=sharing
-    #1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB
-    
-    "Practical": "1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7"   # Practical Papers (P2 & P4)
-    #1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7
-    #the link : https://drive.google.com/drive/folders/1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7?usp=sharing
-}
-
-SCOPES = ['https://www.googleapis.com/auth/drive']
-
-
-# ==========================================
-# 2. AUTHENTICATION & UPLOAD FUNCTION
-# ==========================================
 def get_drive_service():
     """
-    Loads Service Account credentials from st.secrets or local service_account.json.
+    Builds and returns a Google Drive API service object 
+    using credentials stored in Streamlit secrets.
     """
-    if "gcp_service_account" in st.secrets:
-        info = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-        return build('drive', 'v3', credentials=creds)
-    elif os.path.exists("service_account.json"):
-        creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
-        return build('drive', 'v3', credentials=creds)
-    else:
-        st.error("❌ Credentials missing! Ensure `service_account.json` exists locally or `gcp_service_account` is in Streamlit secrets.")
-        return None
-
-
-def upload_file_test(file_bytes, filename, folder_id):
-    """
-    Uploads a file directly to Google Drive using the Service Account.
-    """
-    service = get_drive_service()
-    if not service:
-        return None
-
-    try:
-        # Wrap raw file bytes into binary stream
-        file_stream = io.BytesIO(file_bytes)
-        
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
-        }
-        
-        # Set MIME type
-        mime_type = 'application/pdf' if filename.endswith('.pdf') else 'application/zip'
-        
-        media = MediaIoBaseUpload(
-            file_stream, 
-            mimetype=mime_type, 
-            resumable=False
-        )
-
-        # Send request with supportsAllDrives=True
-        response = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, name, owners',
-            supportsAllDrives=True
-        ).execute()
-
-        return response
-
-    except Exception as error:
-        st.error(f"❌ Upload Failed! Detailed Error:\n\n`{error}`")
-        return None
-
-
-# ==========================================
-# 3. SIMPLE TEST USER INTERFACE
-# ==========================================
-st.set_page_config(page_title="Upload Tester", page_icon="🧪")
-st.title("🧪 Isolated Upload Tester")
-st.caption("Use this interface to test file uploads with your Service Account JSON credentials.")
-
-st.markdown("---")
-
-# Form inputs
-col1, col2 = st.columns(2)
-
-with col1:
-    category = st.radio(
-        "1. Select Paper Category:",
-        ["Theory", "Practical"],
-        help="Theory goes to P1/P3 folder. Practical goes to P2/P4 folder."
+    creds = Credentials(
+        token=None,  # Access token auto-refreshes using the refresh_token
+        refresh_token=st.secrets["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=st.secrets["client_id"],
+        client_secret=st.secrets["client_secret"]
     )
+    return build('drive', 'v3', credentials=creds)
 
-with col2:
-    doc_type = st.radio(
-        "2. Select Document Type:",
-        ["Question Paper (qp)", "Marking Scheme (ms)"]
-    )
+st.title("📁 Google Drive File Uploader")
 
-st.markdown("---")
+# File uploader widget in Streamlit
+uploaded_file = st.file_uploader("Choose a file to upload to Google Drive")
 
-# File browser
-uploaded_file = st.file_uploader("3. Browse File from Hard Drive:", type=["pdf", "zip"])
-
-# Action Button
-if st.button("🚀 Upload to Google Drive", type="primary"):
-    if uploaded_file:
-        target_folder = FOLDER_IDS[category]
-        st.info(f"Target Folder ID: `{target_folder}` ({category} Folder)")
-        
-        with st.spinner("Executing Google Drive API Upload request..."):
-            raw_bytes = uploaded_file.read()
-            result = upload_file_test(raw_bytes, uploaded_file.name, target_folder)
-
-            if result:
-                st.success(f"✅ SUCCESS! File uploaded successfully.")
-                st.json(result)  # Displays file ID and owner details returned by Google
-    else:
-        st.warning("Please browse and select a file first.")
+if uploaded_file is not None:
+    if st.button("Upload to Drive"):
+        try:
+            st.info("Uploading file to Google Drive...")
+            
+            # Initialize Drive API service
+            service = get_drive_service()
+            
+            # Prepare file metadata
+            file_metadata = {'name': uploaded_file.name}
+            
+            # Convert file bytes stream for Google API
+            media = MediaIoBaseUpload(
+                io.BytesIO(uploaded_file.getvalue()), 
+                mimetype=uploaded_file.type,
+                resumable=True
+            )
+            
+            # Upload file
+            uploaded_drive_file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id, webViewLink'
+            ).execute()
+            
+            st.success(f"✅ Upload Successful! File ID: {uploaded_drive_file.get('id')}")
+            st.markdown(f"[View File on Google Drive]({uploaded_drive_file.get('webViewLink')})")
+            
+        except Exception as e:
+            st.error(f"❌ Upload Failed: {e}")
