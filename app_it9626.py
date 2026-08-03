@@ -237,9 +237,9 @@ def create_custom_word_handout(basket_items, syllabus_code):
     """
     Generates a Word document with custom settings:
     - Width: 8.5 inches, Height: 11.5 inches
-    - Margins: 0.5 inches on all 4 sides
+    - Margins: 0.5 inches on top/left/right, 0.3 inches on bottom
     - Dynamic top-centered page numbering
-    - Scaled PDF page screenshots (~6.8 inches wide)
+    - Scaled PDF page screenshots (6.8 inches wide to fill available page width)
     """
     doc = Document()
 
@@ -281,9 +281,8 @@ def create_custom_word_handout(basket_items, syllabus_code):
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High DPI rendering
         img_data = io.BytesIO(pix.tobytes("png"))
 
-        # Width set to 6.8 inches so screenshots fit neatly inside 0.5" margins
+        # Single image insert with proportional scaling (Width = 6.8")
         doc.add_picture(img_data, width=Inches(6.8))
-        doc.add_picture(img_data, height=Inches(8.0))
         pdf_doc.close()
 
         if idx < len(basket_items) - 1:
@@ -302,7 +301,7 @@ if 'theory_results' not in st.session_state:
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
 
-#*************************************************************************************
+
 # ==========================================
 # 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
@@ -376,7 +375,7 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-#*************************************************************************************
+
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
