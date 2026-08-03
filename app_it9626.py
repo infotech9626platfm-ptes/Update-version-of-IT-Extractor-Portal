@@ -239,7 +239,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
     - Width: 8.5 inches, Height: 11.5 inches
     - Margins: 0.5 inches on top/left/right, 0.3 inches on bottom
     - Dynamic top-centered page numbering
-    - Scaled PDF page screenshots (6.8 inches wide to fill available page width)
+    - Scaled PDF page screenshots (6.3 inches wide to fill available page width)
     """
     doc = Document()
 
@@ -250,8 +250,8 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.3)
-        section.left_margin = Inches(0.5)
-        section.right_margin = Inches(0.5)
+        section.left_margin = Inches(0.4)
+        section.right_margin = Inches(0.4)
 
         # Header Page Numbering (Top Center)
         header = section.header
@@ -268,7 +268,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_p.add_run(f'PTES {syllabus_code} IT Handout Worksheets')
     title_run.font.bold = True
-    title_run.font.size = Pt(16)
+    title_run.font.size = Pt(14)
 
     # Process saved pages
     for idx, item in enumerate(basket_items):
@@ -281,8 +281,8 @@ def create_custom_word_handout(basket_items, syllabus_code):
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High DPI rendering
         img_data = io.BytesIO(pix.tobytes("png"))
 
-        # Single image insert with proportional scaling (Width = 6.8")
-        doc.add_picture(img_data, width=Inches(6.8))
+        # Single image insert with proportional scaling (Width = 6.5")
+        doc.add_picture(img_data, width=Inches(6.5))
         pdf_doc.close()
 
         if idx < len(basket_items) - 1:
