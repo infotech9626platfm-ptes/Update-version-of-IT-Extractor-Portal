@@ -249,7 +249,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
         section.page_height = Inches(11.5)
 
         section.top_margin = Inches(0.5)
-        section.bottom_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.3)
         section.left_margin = Inches(0.5)
         section.right_margin = Inches(0.5)
 
