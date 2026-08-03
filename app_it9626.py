@@ -356,21 +356,21 @@ st.markdown(
     .stSelectbox div[data-baseweb="select"],
     div[data-baseweb="select"] > div {{
         background-color: {INPUT_BG_COLOR} !important;
-        border: 2px solid {INPUT_BORDER_COLOR} !important;
-        border-radius: 8px !important;
+        border: 5px solid {INPUT_BORDER_COLOR} !important;
+        border-radius: 10px !important;
     }}
 
     /* Selectbox text and label styling */
     .stSelectbox span,
     div[data-baseweb="select"] span {{
-        color: #FA8FEB !important;
+        color: #6D3761 !important;
         font-weight: 600 !important;
     }}
 
     /* Dropdown arrow icon color */
     .stSelectbox svg,
     div[data-baseweb="select"] svg {{
-        fill: #FA8FEB !important;
+        fill: #6D3761 !important;
     }}
     </style>
     """,
