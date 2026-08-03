@@ -363,14 +363,14 @@ st.markdown(
     /* Selectbox text and label styling */
     .stSelectbox span,
     div[data-baseweb="select"] span {{
-        color: #000000 !important;
+        color: #FA8FEB !important;
         font-weight: 600 !important;
     }}
 
     /* Dropdown arrow icon color */
     .stSelectbox svg,
     div[data-baseweb="select"] svg {{
-        fill: #000000 !important;
+        fill: #FA8FEB !important;
     }}
     </style>
     """,
