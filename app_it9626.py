@@ -235,11 +235,7 @@ def add_page_number_to_header(run):
 
 def create_custom_word_handout(basket_items, syllabus_code):
     """
-    Generates a Word document with custom settings:
-    - Width: 8.5 inches, Height: 11.5 inches
-    - Margins: 0.5 inches on top/left/right, 0.3 inches on bottom
-    - Dynamic top-centered page numbering
-    - Scaled PDF page screenshots (6.3 inches wide to fill available page width)
+    Generates a Word document with custom settings.
     """
     doc = Document()
 
@@ -292,7 +288,36 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
 
 # ==========================================
-# 5. APP STATE INITIALIZATION
+# 5. DIALOG / POP-UP PREVIEW MODAL
+# ==========================================
+@st.dialog("📄 Page Preview", width="large")
+def preview_pdf_page_modal(item):
+    """
+    Renders a high-resolution preview image of a specific PDF page inside a pop-up modal.
+    """
+    st.caption(f"**File:** {item['file']} | **Page:** {item['page'] + 1}")
+    
+    try:
+        pdf_doc = fitz.open(item['path'])
+        page = pdf_doc.load_page(item['page'])
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        img_data = io.BytesIO(pix.tobytes("png"))
+        pdf_doc.close()
+
+        # Display image preview inside modal
+        st.image(img_data, use_container_width=True)
+
+        if st.button("➕ Add Page to Handout Cart", type="primary", key=f"modal_add_{item['file']}_{item['page']}"):
+            st.session_state.handout_basket.append(item)
+            st.toast("Added to cart!")
+            st.rerun()
+
+    except Exception as e:
+        st.error(f"Unable to load preview: {e}")
+
+
+# ==========================================
+# 6. APP STATE INITIALIZATION
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -303,7 +328,7 @@ if 'practical_results' not in st.session_state:
 
 
 # ==========================================
-# 6. STREAMLIT UI LAYOUT & STYLING
+# 7. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
@@ -330,11 +355,7 @@ st.markdown(
         background-color: {SIDEBAR_BG_COLOR} !important;
     }}
 
-    /* ================================================================= */
-    /* 🎯 COMPLETE INPUT BARS & DROPDOWN STYLING                         */
-    /* ================================================================= */
-
-    /* 1. TEXT INPUTS & PASSWORD FIELDS */
+    /* Text Inputs & Selectboxes */
     div[data-baseweb="input"], 
     div[data-baseweb="base-input"],
     .stTextInput input, 
@@ -346,12 +367,10 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Remove inner input background fill on active focus */
     div[data-baseweb="input"] > input {{
         background-color: transparent !important;
     }}
 
-    /* 2. SELECTBOXES / DROPDOWN PARAMETER BARS (Source Files Tab & others) */
     .stSelectbox div[data-baseweb="select"],
     div[data-baseweb="select"] > div {{
         background-color: {INPUT_BG_COLOR} !important;
@@ -359,14 +378,12 @@ st.markdown(
         border-radius: 10px !important;
     }}
 
-    /* Selectbox text and label styling */
     .stSelectbox span,
     div[data-baseweb="select"] span {{
         color: #6D3761 !important;
         font-weight: 600 !important;
     }}
 
-    /* Dropdown arrow icon color */
     .stSelectbox svg,
     div[data-baseweb="select"] svg {{
         fill: #6D3761 !important;
@@ -415,13 +432,19 @@ with tab1:
     if st.session_state.theory_results:
         st.write(f"Found **{len(st.session_state.theory_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.theory_results):
-            col1, col2 = st.columns([4, 1])
+            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
             col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
-            if col2.button("➕ Add", key=f"add_t1_{idx}"):
+            
+            # Preview Button
+            if col2.button("👁️ Preview", key=f"prev_t1_{idx}"):
+                preview_pdf_page_modal(item)
+
+            # Add Button
+            if col3.button("➕ Add", key=f"add_t1_{idx}"):
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
-                st.rerun()  # Instantly updates sidebar count
+                st.rerun()
 
 
 # --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
@@ -442,13 +465,19 @@ with tab2:
     if st.session_state.practical_results:
         st.write(f"Found **{len(st.session_state.practical_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.practical_results):
-            col1, col2 = st.columns([4, 1])
+            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
             col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
-            if col2.button("➕ Add", key=f"add_t2_{idx}"):
+            
+            # Preview Button
+            if col2.button("👁️ Preview", key=f"prev_t2_{idx}"):
+                preview_pdf_page_modal(item)
+
+            # Add Button
+            if col3.button("➕ Add", key=f"add_t2_{idx}"):
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
-                st.rerun()  # Instantly updates sidebar count
+                st.rerun()
 
 
 # --- TAB 3: HANDOUT BASKET / CART ---
@@ -591,7 +620,7 @@ with tab5:
 
 
 # ==========================================
-# 7. FOOTER
+# 8. FOOTER
 # ==========================================
 st.markdown("---")
 st.markdown(
