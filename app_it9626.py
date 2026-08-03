@@ -383,7 +383,7 @@ st.markdown(
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
-# Sidebar - Handout Basket Status
+# Sidebar - Handout Basket Status (Always accurately reflects session_state)
 with st.sidebar:
     st.header("Handout Basket Summary")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
@@ -434,6 +434,7 @@ with tab1:
                     if st.button("➕ Add to Basket", key=f"add_t1_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+                        st.rerun()  # Instantly updates sidebar metric
 
                     st.markdown("---")
                     
@@ -481,6 +482,7 @@ with tab2:
                     if st.button("➕ Add to Basket", key=f"add_t2_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+                        st.rerun()  # Instantly updates sidebar metric
 
                     st.markdown("---")
 
