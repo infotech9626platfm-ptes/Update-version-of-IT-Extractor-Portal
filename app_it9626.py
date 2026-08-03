@@ -283,6 +283,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
         # Width set to 6.8 inches so screenshots fit neatly inside 0.5" margins
         doc.add_picture(img_data, width=Inches(6.8))
+        doc.add_picture(img_data, height=Inches(8.0))
         pdf_doc.close()
 
         if idx < len(basket_items) - 1:
