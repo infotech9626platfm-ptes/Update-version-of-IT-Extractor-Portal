@@ -332,10 +332,10 @@ st.markdown(
     }}
 
     /* ================================================================= */
-    /* 🎯 ULTRA-SPECIFIC INPUT BARS STYLING (TEXT, PASSWORD, SELECT)     */
+    /* 🎯 COMPLETE INPUT BARS & DROPDOWN STYLING                         */
     /* ================================================================= */
 
-    /* 1. TEXT INPUTS & PASSWORD INPUTS */
+    /* 1. TEXT INPUTS & PASSWORD FIELDS */
     div[data-baseweb="input"], 
     div[data-baseweb="base-input"],
     .stTextInput input, 
@@ -347,25 +347,28 @@ st.markdown(
         font-weight: 600 !important;
     }}
 
-    /* Remove extra background fill on active focus */
+    /* Remove inner input background fill on active focus */
     div[data-baseweb="input"] > input {{
         background-color: transparent !important;
     }}
 
-    /* 2. SELECTBOXES / DROPDOWNS */
+    /* 2. SELECTBOXES / DROPDOWN PARAMETER BARS (Source Files Tab & others) */
+    .stSelectbox div[data-baseweb="select"],
     div[data-baseweb="select"] > div {{
         background-color: {INPUT_BG_COLOR} !important;
         border: 2px solid {INPUT_BORDER_COLOR} !important;
         border-radius: 8px !important;
     }}
 
-    /* Text inside selectboxes */
-    div[data-baseweb="select"] * {{
+    /* Selectbox text and label styling */
+    .stSelectbox span,
+    div[data-baseweb="select"] span {{
         color: #000000 !important;
         font-weight: 600 !important;
     }}
 
     /* Dropdown arrow icon color */
+    .stSelectbox svg,
     div[data-baseweb="select"] svg {{
         fill: #000000 !important;
     }}
