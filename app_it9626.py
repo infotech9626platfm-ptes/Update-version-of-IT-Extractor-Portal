@@ -209,6 +209,18 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
     return results
 
 
+def render_pdf_page_image(file_path: str, page_num: int) -> bytes:
+    """
+    Renders a specific page of a PDF file to PNG byte stream.
+    """
+    pdf_doc = fitz.open(file_path)
+    page = pdf_doc.load_page(page_num)
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Crisp rendering
+    img_bytes = pix.tobytes("png")
+    pdf_doc.close()
+    return img_bytes
+
+
 # ==========================================
 # 4. WORD DOCUMENT BUILDER HELPER
 # ==========================================
@@ -272,14 +284,10 @@ def create_custom_word_handout(basket_items, syllabus_code):
         h.paragraph_format.space_before = Pt(4)
         h.paragraph_format.space_after = Pt(4)
 
-        pdf_doc = fitz.open(item['path'])
-        page = pdf_doc.load_page(item['page'])
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High DPI rendering
-        img_data = io.BytesIO(pix.tobytes("png"))
+        img_data = io.BytesIO(render_pdf_page_image(item['path'], item['page']))
 
         # Single image insert with proportional scaling (Width = 6.5")
         doc.add_picture(img_data, width=Inches(6.5))
-        pdf_doc.close()
 
         if idx < len(basket_items) - 1:
             doc.add_page_break()
@@ -288,36 +296,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
 
 # ==========================================
-# 5. DIALOG / POP-UP PREVIEW MODAL
-# ==========================================
-@st.dialog("📄 Page Preview", width="large")
-def preview_pdf_page_modal(item):
-    """
-    Renders a high-resolution preview image of a specific PDF page inside a pop-up modal.
-    """
-    st.caption(f"**File:** {item['file']} | **Page:** {item['page'] + 1}")
-    
-    try:
-        pdf_doc = fitz.open(item['path'])
-        page = pdf_doc.load_page(item['page'])
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-        img_data = io.BytesIO(pix.tobytes("png"))
-        pdf_doc.close()
-
-        # Display image preview inside modal
-        st.image(img_data, use_container_width=True)
-
-        if st.button("➕ Add Page to Handout Cart", type="primary", key=f"modal_add_{item['file']}_{item['page']}"):
-            st.session_state.handout_basket.append(item)
-            st.toast("Added to cart!")
-            st.rerun()
-
-    except Exception as e:
-        st.error(f"Unable to load preview: {e}")
-
-
-# ==========================================
-# 6. APP STATE INITIALIZATION
+# 5. APP STATE INITIALIZATION
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -328,7 +307,7 @@ if 'practical_results' not in st.session_state:
 
 
 # ==========================================
-# 7. STREAMLIT UI LAYOUT & STYLING
+# 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
@@ -388,6 +367,14 @@ st.markdown(
     div[data-baseweb="select"] svg {{
         fill: #6D3761 !important;
     }}
+
+    /* Custom expander styling */
+    .stExpander {{
+        background-color: #ffffff;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 8px;
+    }}
     </style>
     """,
     unsafe_allow_html=True
@@ -432,19 +419,33 @@ with tab1:
     if st.session_state.theory_results:
         st.write(f"Found **{len(st.session_state.theory_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.theory_results):
-            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
-            col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
+            label = f"📄 {item['file']} | {doc_kind} | Page {item['page'] + 1}"
             
-            # Preview Button
-            if col2.button("👁️ Preview", key=f"prev_t1_{idx}"):
-                preview_pdf_page_modal(item)
+            with st.expander(label):
+                col_img, col_actions = st.columns([3, 1])
+                
+                with col_img:
+                    img_data = render_pdf_page_image(item['path'], item['page'])
+                    st.image(img_data, use_container_width=True)
 
-            # Add Button
-            if col3.button("➕ Add", key=f"add_t1_{idx}"):
-                st.session_state.handout_basket.append(item)
-                st.toast("Added to basket!")
-                st.rerun()
+                with col_actions:
+                    st.write("### Actions")
+                    if st.button("➕ Add to Basket", key=f"add_t1_{idx}", type="primary"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+
+                    st.markdown("---")
+                    
+                    # Direct full PDF Download button
+                    with open(item['path'], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f.read(),
+                            file_name=item['file'],
+                            mime="application/pdf",
+                            key=f"dl_t1_{idx}"
+                        )
 
 
 # --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
@@ -465,19 +466,33 @@ with tab2:
     if st.session_state.practical_results:
         st.write(f"Found **{len(st.session_state.practical_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.practical_results):
-            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
-            col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
+            label = f"📄 {item['file']} | {doc_kind} | Page {item['page'] + 1}"
             
-            # Preview Button
-            if col2.button("👁️ Preview", key=f"prev_t2_{idx}"):
-                preview_pdf_page_modal(item)
+            with st.expander(label):
+                col_img, col_actions = st.columns([3, 1])
+                
+                with col_img:
+                    img_data = render_pdf_page_image(item['path'], item['page'])
+                    st.image(img_data, use_container_width=True)
 
-            # Add Button
-            if col3.button("➕ Add", key=f"add_t2_{idx}"):
-                st.session_state.handout_basket.append(item)
-                st.toast("Added to basket!")
-                st.rerun()
+                with col_actions:
+                    st.write("### Actions")
+                    if st.button("➕ Add to Basket", key=f"add_t2_{idx}", type="primary"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+
+                    st.markdown("---")
+
+                    # Direct full PDF Download button
+                    with open(item['path'], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f.read(),
+                            file_name=item['file'],
+                            mime="application/pdf",
+                            key=f"dl_t2_{idx}"
+                        )
 
 
 # --- TAB 3: HANDOUT BASKET / CART ---
@@ -620,7 +635,7 @@ with tab5:
 
 
 # ==========================================
-# 8. FOOTER
+# 7. FOOTER
 # ==========================================
 st.markdown("---")
 st.markdown(
