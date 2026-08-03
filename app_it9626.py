@@ -4,7 +4,10 @@ import re
 import fitz  # PyMuPDF
 import streamlit as st
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 # Google API Libraries
 from google.oauth2.credentials import Credentials
@@ -127,7 +130,6 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
     local_path = LOCAL_FOLDERS[folder_key]
 
     try:
-        # Query Google Drive for all non-trashed files in this target folder
         query = f"'{drive_folder_id}' in parents and trashed = false"
         results = service.files().list(q=query, fields="files(id, name, mimeType)").execute()
         drive_files = results.get('files', [])
@@ -139,7 +141,6 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
             file_id = file_info['id']
             local_file_path = os.path.join(local_path, file_name)
 
-            # Download only if the file does not exist locally yet
             if not os.path.exists(local_file_path):
                 request = service.files().get_media(fileId=file_id)
                 with open(local_file_path, "wb") as f:
@@ -162,13 +163,11 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
 def search_pdfs(keyword_list, folder_path, allowed_variants):
     """
     Scans local PDF files for keywords using flexible, case-insensitive matching.
-    Handles variations like 'VECTOR', 'Vector', 'vector', and plurals ('vectors').
     """
     results = []
     if not os.path.exists(folder_path):
         return results
 
-    # Clean and prepare keyword list
     cleaned_keywords = [k.strip().lower() for k in keyword_list if k.strip()]
     if not cleaned_keywords:
         return results
@@ -177,7 +176,6 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
         if file.endswith(".pdf"):
             base_name = os.path.splitext(file)[0]
             
-            # Filter allowed paper variants (e.g., _11, _12, _13, _02, _31, _04)
             is_valid_variant = any(base_name.endswith(f"_{variant}") for variant in allowed_variants)
             if not is_valid_variant:
                 continue
@@ -188,15 +186,11 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
                 for page_num in range(len(doc)):
                     page_text = doc[page_num].get_text()
                     
-                    # Check if ALL entered keywords match on this page
                     matches_all = True
                     for kw in cleaned_keywords:
                         escaped_kw = re.escape(kw)
-                        
-                        # Regex pattern: matches exact word OR common plurals (e.g. vector / vectors)
                         pattern = r'\b' + escaped_kw + r'(s|es)?\b'
                         
-                        # Fallback to general substring match if regex boundary misses non-standard words
                         if not re.search(pattern, page_text, re.IGNORECASE) and kw not in page_text.lower():
                             matches_all = False
                             break
@@ -216,7 +210,89 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
 
 
 # ==========================================
-# 4. APP STATE INITIALIZATION
+# 4. WORD DOCUMENT BUILDER HELPER
+# ==========================================
+def add_page_number_to_header(run):
+    """
+    Inserts a dynamic Word XML page number field into a header text run.
+    """
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = "PAGE"
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'separate')
+    fldChar3 = OxmlElement('w:fldChar')
+    fldChar3.set(qn('w:fldCharType'), 'end')
+
+    r = run._r
+    r.append(fldChar1)
+    r.append(instrText)
+    r.append(fldChar2)
+    r.append(fldChar3)
+
+
+def create_custom_word_handout(basket_items, syllabus_code):
+    """
+    Generates a Word document with custom settings:
+    - Width: 8.5 inches, Height: 11.5 inches
+    - Margins: 0.5 inches on all 4 sides
+    - Dynamic top-centered page numbering
+    - Scaled PDF page screenshots (~6.8 inches wide)
+    """
+    doc = Document()
+
+    # Configure Section Page Dimensions & Margins
+    for section in doc.sections:
+        section.page_width = Inches(8.5)
+        section.page_height = Inches(11.5)
+
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
+        # Header Page Numbering (Top Center)
+        header = section.header
+        header_para = header.paragraphs[0]
+        header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        
+        header_run = header_para.add_run("Page ")
+        header_run.font.name = "Arial"
+        header_run.font.size = Pt(10)
+        add_page_number_to_header(header_run)
+
+    # Main Document Header
+    title_p = doc.add_paragraph()
+    title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_run = title_p.add_run(f'PTES {syllabus_code} IT Handout Worksheets')
+    title_run.font.bold = True
+    title_run.font.size = Pt(16)
+
+    # Process saved pages
+    for idx, item in enumerate(basket_items):
+        h = doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
+        h.paragraph_format.space_before = Pt(4)
+        h.paragraph_format.space_after = Pt(4)
+
+        pdf_doc = fitz.open(item['path'])
+        page = pdf_doc.load_page(item['page'])
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High DPI rendering
+        img_data = io.BytesIO(pix.tobytes("png"))
+
+        # Width set to 6.8 inches so screenshots fit neatly inside 0.5" margins
+        doc.add_picture(img_data, width=Inches(6.8))
+        pdf_doc.close()
+
+        if idx < len(basket_items) - 1:
+            doc.add_page_break()
+
+    return doc
+
+
+# ==========================================
+# 5. APP STATE INITIALIZATION
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -227,16 +303,12 @@ if 'practical_results' not in st.session_state:
 
 
 # ==========================================
-# 5. STREAMLIT UI LAYOUT & STYLING
+# 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
-# --- CUSTOM BACKGROUND COLOR STYLING ---
-# You can change this hex color code anytime!
-# Examples: "#F4F6F9" (Soft Light Gray), "#EBF3F5" (Soft Light Blue), "#1E1E2E" (Dark Mode)
-############################################################################################
 MAIN_BG_COLOR = "#f9f0ee"     # Main screen background color
-SIDEBAR_BG_COLOR = "#FFFDD0"  # Sidebar background color (slightly darker soft gray)
+SIDEBAR_BG_COLOR = "#FFFDD0"  # Sidebar background color
 
 st.markdown(
     f"""
@@ -259,7 +331,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-#############################################################################################
 
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
@@ -306,6 +377,7 @@ with tab1:
             if col2.button("➕ Add", key=f"add_t1_{idx}"):
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
+                st.rerun()  # Instantly updates sidebar count
 
 
 # --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
@@ -332,36 +404,38 @@ with tab2:
             if col2.button("➕ Add", key=f"add_t2_{idx}"):
                 st.session_state.handout_basket.append(item)
                 st.toast("Added to basket!")
+                st.rerun()  # Instantly updates sidebar count
 
 
-# --- TAB 3: HANDOUT BASKET ---
+# --- TAB 3: HANDOUT BASKET / CART ---
 with tab3:
     st.header("Worksheet / Handout Builder")
     if st.session_state.handout_basket:
         st.subheader(f"Selected Question/Answer Pages: {len(st.session_state.handout_basket)}")
 
-        for idx, item in enumerate(st.session_state.handout_basket):
-            st.write(f"{idx+1}. **{item['file']}** (Page {item['page'] + 1})")
+        for idx, item in enumerate(list(st.session_state.handout_basket)):
+            c1, c2 = st.columns([4, 1])
+            c1.write(f"{idx+1}. **{item['file']}** (Page {item['page'] + 1})")
+            if c2.button("❌ Remove", key=f"remove_basket_{idx}"):
+                st.session_state.handout_basket.pop(idx)
+                st.rerun()
 
+        st.markdown("---")
         if st.button("🪄 Export Handout to Word Document", type="primary"):
-            doc = Document()
-            doc.add_heading(f'PTES {SYLLABUS_CODE} IT Handout', 0)
+            with st.spinner("Building custom Word document..."):
+                doc = create_custom_word_handout(st.session_state.handout_basket, SYLLABUS_CODE)
+                
+                target_filename = f"{SYLLABUS_CODE}_IT_Handout.docx"
+                doc_buffer = io.BytesIO()
+                doc.save(doc_buffer)
+                doc_buffer.seek(0)
 
-            for item in st.session_state.handout_basket:
-                doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
-                pdf_doc = fitz.open(item['path'])
-                page = pdf_doc.load_page(item['page'])
-                pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_data = io.BytesIO(pix.tobytes("png"))
-                doc.add_picture(img_data, width=Inches(6.5))
-                doc.add_page_break()
-                pdf_doc.close()
-
-            target_filename = f"{SYLLABUS_CODE}_IT_Handout.docx"
-            doc.save(target_filename)
-
-            with open(target_filename, "rb") as f:
-                st.download_button("📥 Click for final Download to Local Drive", f, file_name=target_filename)
+                st.download_button(
+                    label="📥 Click for final Download to Local Drive",
+                    data=doc_buffer,
+                    file_name=target_filename,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
     else:
         st.info("Your basket is empty. Add pages from Tab 1 or Tab 2.")
 
@@ -401,7 +475,6 @@ with tab4:
 with tab5:
     st.header("Admin & Google Drive Sync Panel")
 
-    # Securely retrieve admin password from Streamlit secrets
     admin_password = st.secrets.get("ADMIN_PASSWORD")
 
     if not admin_password:
@@ -474,7 +547,7 @@ with tab5:
 
 
 # ==========================================
-# 6. FOOTER
+# 7. FOOTER
 # ==========================================
 st.markdown("---")
 st.markdown(
