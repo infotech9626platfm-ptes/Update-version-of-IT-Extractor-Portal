@@ -302,7 +302,6 @@ if 'theory_results' not in st.session_state:
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
 
-
 # ==========================================
 # 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
@@ -310,6 +309,8 @@ st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
 MAIN_BG_COLOR = "#f9f0ee"     # Main screen background color
 SIDEBAR_BG_COLOR = "#FFFDD0"  # Sidebar background color
+INPUT_BG_COLOR = "#FA8FEB"    # Input box background color
+INPUT_BORDER_COLOR = "#2C2C2C" # Dark border color for input bars
 
 st.markdown(
     f"""
@@ -328,10 +329,43 @@ st.markdown(
     [data-testid="stSidebar"] {{
         background-color: {SIDEBAR_BG_COLOR};
     }}
+
+    /* ================================================================= */
+    /* 🎯 CUSTOM INPUT BARS STYLING (TEXT INPUTS, PASSWORDS, SELECT BOXES) */
+    /* ================================================================= */
+    
+    /* Text Inputs & Password Fields Container */
+    div[data-baseweb="input"] {{
+        background-color: {INPUT_BG_COLOR} !important;
+        border: 2px solid {INPUT_BORDER_COLOR} !important;
+        border-radius: 8px !important;
+    }}
+
+    /* Actual Text Input Field Inside */
+    div[data-baseweb="input"] input {{
+        background-color: transparent !important;
+        color: #000000 !important; /* Dark text for contrast */
+        font-weight: 500 !important;
+    }}
+
+    /* Selectbox / Dropdown Containers */
+    div[data-baseweb="select"] > div {{
+        background-color: {INPUT_BG_COLOR} !important;
+        border: 2px solid {INPUT_BORDER_COLOR} !important;
+        border-radius: 8px !important;
+        color: #000000 !important;
+    }}
+
+    /* Dropdown text styling */
+    div[data-baseweb="select"] span {{
+        color: #000000 !important;
+        font-weight: 500 !important;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
+#*****************************************************************************************
 
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
