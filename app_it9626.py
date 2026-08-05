@@ -383,13 +383,30 @@ st.markdown(
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
-# Sidebar - Handout Basket Status (Always accurately reflects session_state)
+# ==========================================
+# SIDEBAR: BASKET SUMMARY & GLOBAL DRIVE SYNC
+# ==========================================
 with st.sidebar:
-    st.header("Handout Basket Summary")
+    st.header("🛒 Handout Basket Summary")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
-    if st.button("🗑️ Clear Basket"):
+    
+    if st.button("🗑️ Clear Basket", key="sb_clear_basket"):
         st.session_state.handout_basket = []
         st.rerun()
+
+    st.markdown("---")
+    st.header("🔄 Google Drive Sync")
+    st.caption("Sync locally mirrored files with Google Drive.")
+    
+    if st.button("🔄 Sync All Files from Google Drive", type="primary", key="sb_sync_btn"):
+        with st.spinner("Scanning Google Drive folders and downloading new files..."):
+            total_synced = 0
+            for f_key in ["theory", "practical", "zips"]:
+                count, msg = sync_drive_folder_to_local(f_key)
+                total_synced += count
+                st.info(msg)
+            
+            st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded!")
 
 # Application Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -397,7 +414,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⚙️ Practical Search(P2&P4)", 
     "🛒 Handout Cart", 
     "📦 Source Files(ZIP)", 
-    "🔒 Admin&Sync Panel"
+    "🔒 Admin Panel"
 ])
 
 
@@ -434,11 +451,10 @@ with tab1:
                     if st.button("➕ Add to Basket", key=f"add_t1_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
-                        st.rerun()  # Instantly updates sidebar metric
+                        st.rerun()
 
                     st.markdown("---")
                     
-                    # Direct full PDF Download button
                     with open(item['path'], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -482,11 +498,10 @@ with tab2:
                     if st.button("➕ Add to Basket", key=f"add_t2_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
-                        st.rerun()  # Instantly updates sidebar metric
+                        st.rerun()
 
                     st.markdown("---")
 
-                    # Direct full PDF Download button
                     with open(item['path'], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -561,9 +576,9 @@ with tab4:
         st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Use the Admin Sync button to pull newly uploaded files from Drive.")
 
 
-# --- TAB 5: ADMIN & SYNC PANEL ---
+# --- TAB 5: ADMIN PANEL ---
 with tab5:
-    st.header("Admin & Google Drive Sync Panel")
+    st.header("Admin Panel")
 
     admin_password = st.secrets.get("ADMIN_PASSWORD")
 
@@ -577,22 +592,6 @@ with tab5:
 
         if pwd == admin_password:
             st.success("Admin Access Granted")
-            
-            # --- BULK SYNC FROM GOOGLE DRIVE ---
-            st.subheader("🔄 Bulk Sync with Google Drive")
-            st.caption("Click below if tutors uploaded files directly into your Google Drive folders.")
-            
-            if st.button("🔄 Sync All Files from Google Drive", type="primary"):
-                with st.spinner("Scanning Google Drive folders and downloading new files..."):
-                    total_synced = 0
-                    for f_key in ["theory", "practical", "zips"]:
-                        count, msg = sync_drive_folder_to_local(f_key)
-                        total_synced += count
-                        st.info(msg)
-                    
-                    st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded and ready for search!")
-
-            st.markdown("---")
             
             # --- MANUAL SINGLE FILE UPLOAD ---
             st.subheader("📤 Single File Direct Upload")
@@ -644,7 +643,7 @@ st.markdown(
     """
     <div style="text-align: center; width: 100%;">
         <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9626 Information Technology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Creator: HNHaziqah Computer Science PTES</p>
+        <p style="color: gray; font-size: 14px;">Developer: Hjh Nurul Haziqah @ Hartini Computer Science PTES</p>
     </div>
     """,
     unsafe_allow_html=True
