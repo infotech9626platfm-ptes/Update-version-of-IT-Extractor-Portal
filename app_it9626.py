@@ -247,7 +247,7 @@ def add_page_number_to_header(run):
 
 def create_custom_word_handout(basket_items, syllabus_code):
     """
-    Generates a Word document with custom settings.
+    Generates a Word document with custom page and margin settings.
     """
     doc = Document()
 
@@ -296,7 +296,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
 
 # ==========================================
-# 5. APP STATE INITIALIZATION
+# 5. APP STATE INITIALIZATION & AUTO-SYNC
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -304,6 +304,23 @@ if 'theory_results' not in st.session_state:
     st.session_state.theory_results = []
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
+
+# --- AUTO-SYNC PROCEDURE ON PORTAL WAKE UP / STARTUP ---
+if 'has_auto_synced' not in st.session_state:
+    st.session_state.has_auto_synced = False
+
+if not st.session_state.has_auto_synced:
+    with st.spinner("⚡ Portal waking up: Syncing latest files from Google Drive..."):
+        total_auto_synced = 0
+        for f_key in ["theory", "practical", "zips"]:
+            count, _ = sync_drive_folder_to_local(f_key)
+            total_auto_synced += count
+        
+        # Mark auto-sync complete so it only executes once per user session
+        st.session_state.has_auto_synced = True
+        
+        if total_auto_synced > 0:
+            st.toast(f"🔄 Auto-Sync Complete: Downloaded {total_auto_synced} new file(s)!")
 
 
 # ==========================================
@@ -384,7 +401,7 @@ st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
 # ==========================================
-# SIDEBAR: BASKET SUMMARY & GLOBAL DRIVE SYNC
+# SIDEBAR: BASKET SUMMARY & MANUAL DRIVE SYNC
 # ==========================================
 with st.sidebar:
     st.header("🛒 Handout Basket Summary")
@@ -398,6 +415,7 @@ with st.sidebar:
     st.header("🔄 Google Drive Sync")
     st.caption("Sync locally mirrored files with Google Drive.")
     
+    # MANUAL SYNC PROCEDURE (TRIGGERED VIA BUTTON CLICK)
     if st.button("🔄 Sync All Files from Google Drive", type="primary", key="sb_sync_btn"):
         with st.spinner("Scanning Google Drive folders and downloading new files..."):
             total_synced = 0
@@ -643,7 +661,7 @@ st.markdown(
     """
     <div style="text-align: center; width: 100%;">
         <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9626 Information Technology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Developer: Hjh Nurul Haziqah @ Hartini Computer Science PTES</p>
+        <p style="color: gray; font-size: 14px;">Creator: HNHaziqah Computer Science PTES</p>
     </div>
     """,
     unsafe_allow_html=True
