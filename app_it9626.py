@@ -661,7 +661,7 @@ st.markdown(
     """
     <div style="text-align: center; width: 100%;">
         <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9626 Information Technology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Creator: HNHaziqah Computer Science PTES</p>
+        <p style="color: gray; font-size: 14px;">Developer: HNHaziqah @ HHartini Computer Science PTES</p>
     </div>
     """,
     unsafe_allow_html=True
