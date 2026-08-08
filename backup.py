@@ -1,4 +1,4 @@
-# A script containing preview window and EYE icon is available to each listed pdf page 
+######### Ascript of using the client ID, client secrets and the refresh token ID *********
 import io
 import os
 import re
@@ -210,6 +210,18 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
     return results
 
 
+def render_pdf_page_image(file_path: str, page_num: int) -> bytes:
+    """
+    Renders a specific page of a PDF file to PNG byte stream.
+    """
+    pdf_doc = fitz.open(file_path)
+    page = pdf_doc.load_page(page_num)
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Crisp rendering
+    img_bytes = pix.tobytes("png")
+    pdf_doc.close()
+    return img_bytes
+
+
 # ==========================================
 # 4. WORD DOCUMENT BUILDER HELPER
 # ==========================================
@@ -236,7 +248,7 @@ def add_page_number_to_header(run):
 
 def create_custom_word_handout(basket_items, syllabus_code):
     """
-    Generates a Word document with custom settings.
+    Generates a Word document with custom page and margin settings.
     """
     doc = Document()
 
@@ -273,14 +285,10 @@ def create_custom_word_handout(basket_items, syllabus_code):
         h.paragraph_format.space_before = Pt(4)
         h.paragraph_format.space_after = Pt(4)
 
-        pdf_doc = fitz.open(item['path'])
-        page = pdf_doc.load_page(item['page'])
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # High DPI rendering
-        img_data = io.BytesIO(pix.tobytes("png"))
+        img_data = io.BytesIO(render_pdf_page_image(item['path'], item['page']))
 
         # Single image insert with proportional scaling (Width = 6.5")
         doc.add_picture(img_data, width=Inches(6.5))
-        pdf_doc.close()
 
         if idx < len(basket_items) - 1:
             doc.add_page_break()
@@ -289,36 +297,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
 
 # ==========================================
-# 5. DIALOG / POP-UP PREVIEW MODAL
-# ==========================================
-@st.dialog("📄 Page Preview", width="large")
-def preview_pdf_page_modal(item):
-    """
-    Renders a high-resolution preview image of a specific PDF page inside a pop-up modal.
-    """
-    st.caption(f"**File:** {item['file']} | **Page:** {item['page'] + 1}")
-    
-    try:
-        pdf_doc = fitz.open(item['path'])
-        page = pdf_doc.load_page(item['page'])
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-        img_data = io.BytesIO(pix.tobytes("png"))
-        pdf_doc.close()
-
-        # Display image preview inside modal
-        st.image(img_data, use_container_width=True)
-
-        if st.button("➕ Add Page to Handout Cart", type="primary", key=f"modal_add_{item['file']}_{item['page']}"):
-            st.session_state.handout_basket.append(item)
-            st.toast("Added to cart!")
-            st.rerun()
-
-    except Exception as e:
-        st.error(f"Unable to load preview: {e}")
-
-
-# ==========================================
-# 6. APP STATE INITIALIZATION
+# 5. APP STATE INITIALIZATION & AUTO-SYNC
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -327,9 +306,26 @@ if 'theory_results' not in st.session_state:
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
 
+# --- AUTO-SYNC PROCEDURE ON PORTAL WAKE UP / STARTUP ---
+if 'has_auto_synced' not in st.session_state:
+    st.session_state.has_auto_synced = False
+
+if not st.session_state.has_auto_synced:
+    with st.spinner("⚡ Portal waking up: Syncing latest files from Google Drive..."):
+        total_auto_synced = 0
+        for f_key in ["theory", "practical", "zips"]:
+            count, _ = sync_drive_folder_to_local(f_key)
+            total_auto_synced += count
+        
+        # Mark auto-sync complete so it only executes once per user session
+        st.session_state.has_auto_synced = True
+        
+        if total_auto_synced > 0:
+            st.toast(f"🔄 Auto-Sync Complete: Downloaded {total_auto_synced} new file(s)!")
+
 
 # ==========================================
-# 7. STREAMLIT UI LAYOUT & STYLING
+# 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
@@ -389,6 +385,14 @@ st.markdown(
     div[data-baseweb="select"] svg {{
         fill: #6D3761 !important;
     }}
+
+    /* Custom expander styling */
+    .stExpander {{
+        background-color: #ffffff;
+        border-radius: 10px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 8px;
+    }}
     </style>
     """,
     unsafe_allow_html=True
@@ -397,13 +401,31 @@ st.markdown(
 st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
-# Sidebar - Handout Basket Status
+# ==========================================
+# SIDEBAR: BASKET SUMMARY & MANUAL DRIVE SYNC
+# ==========================================
 with st.sidebar:
-    st.header("Handout Basket Summary")
+    st.header("🛒 Handout Basket Summary")
     st.metric(label="Saved Pages in Basket", value=len(st.session_state.handout_basket))
-    if st.button("🗑️ Clear Basket"):
+    
+    if st.button("🗑️ Clear Basket", key="sb_clear_basket"):
         st.session_state.handout_basket = []
         st.rerun()
+
+    st.markdown("---")
+    st.header("🔄 Google Drive Sync")
+    st.caption("Sync locally mirrored files with Google Drive.")
+    
+    # MANUAL SYNC PROCEDURE (TRIGGERED VIA BUTTON CLICK)
+    if st.button("🔄 Sync All Files from Google Drive", type="primary", key="sb_sync_btn"):
+        with st.spinner("Scanning Google Drive folders and downloading new files..."):
+            total_synced = 0
+            for f_key in ["theory", "practical", "zips"]:
+                count, msg = sync_drive_folder_to_local(f_key)
+                total_synced += count
+                st.info(msg)
+            
+            st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded!")
 
 # Application Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -411,7 +433,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⚙️ Practical Search(P2&P4)", 
     "🛒 Handout Cart", 
     "📦 Source Files(ZIP)", 
-    "🔒 Admin&Sync Panel"
+    "🔒 Admin Panel"
 ])
 
 
@@ -433,19 +455,33 @@ with tab1:
     if st.session_state.theory_results:
         st.write(f"Found **{len(st.session_state.theory_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.theory_results):
-            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
-            col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
+            label = f"📄 {item['file']} | {doc_kind} | Page {item['page'] + 1}"
             
-            # Preview Button
-            if col2.button("👁️ Preview", key=f"prev_t1_{idx}"):
-                preview_pdf_page_modal(item)
+            with st.expander(label):
+                col_img, col_actions = st.columns([3, 1])
+                
+                with col_img:
+                    img_data = render_pdf_page_image(item['path'], item['page'])
+                    st.image(img_data, use_container_width=True)
 
-            # Add Button
-            if col3.button("➕ Add", key=f"add_t1_{idx}"):
-                st.session_state.handout_basket.append(item)
-                st.toast("Added to basket!")
-                st.rerun()
+                with col_actions:
+                    st.write("### Actions")
+                    if st.button("➕ Add to Basket", key=f"add_t1_{idx}", type="primary"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+                        st.rerun()
+
+                    st.markdown("---")
+                    
+                    with open(item['path'], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f.read(),
+                            file_name=item['file'],
+                            mime="application/pdf",
+                            key=f"dl_t1_{idx}"
+                        )
 
 
 # --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
@@ -466,19 +502,33 @@ with tab2:
     if st.session_state.practical_results:
         st.write(f"Found **{len(st.session_state.practical_results)}** matching pages:")
         for idx, item in enumerate(st.session_state.practical_results):
-            col1, col2, col3 = st.columns([3, 1, 1])
             doc_kind = "📝 Question Paper" if item["type"] == "QP" else "🔑 Marking Scheme"
-            col1.write(f"📄 **{item['file']}** | {doc_kind} | (Page {item['page'] + 1})")
+            label = f"📄 {item['file']} | {doc_kind} | Page {item['page'] + 1}"
             
-            # Preview Button
-            if col2.button("👁️ Preview", key=f"prev_t2_{idx}"):
-                preview_pdf_page_modal(item)
+            with st.expander(label):
+                col_img, col_actions = st.columns([3, 1])
+                
+                with col_img:
+                    img_data = render_pdf_page_image(item['path'], item['page'])
+                    st.image(img_data, use_container_width=True)
 
-            # Add Button
-            if col3.button("➕ Add", key=f"add_t2_{idx}"):
-                st.session_state.handout_basket.append(item)
-                st.toast("Added to basket!")
-                st.rerun()
+                with col_actions:
+                    st.write("### Actions")
+                    if st.button("➕ Add to Basket", key=f"add_t2_{idx}", type="primary"):
+                        st.session_state.handout_basket.append(item)
+                        st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
+                        st.rerun()
+
+                    st.markdown("---")
+
+                    with open(item['path'], "rb") as pdf_f:
+                        st.download_button(
+                            label="📥 Download Full PDF",
+                            data=pdf_f.read(),
+                            file_name=item['file'],
+                            mime="application/pdf",
+                            key=f"dl_t2_{idx}"
+                        )
 
 
 # --- TAB 3: HANDOUT BASKET / CART ---
@@ -545,9 +595,9 @@ with tab4:
         st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Use the Admin Sync button to pull newly uploaded files from Drive.")
 
 
-# --- TAB 5: ADMIN & SYNC PANEL ---
+# --- TAB 5: ADMIN PANEL ---
 with tab5:
-    st.header("Admin & Google Drive Sync Panel")
+    st.header("Admin Panel")
 
     admin_password = st.secrets.get("ADMIN_PASSWORD")
 
@@ -561,22 +611,6 @@ with tab5:
 
         if pwd == admin_password:
             st.success("Admin Access Granted")
-            
-            # --- BULK SYNC FROM GOOGLE DRIVE ---
-            st.subheader("🔄 Bulk Sync with Google Drive")
-            st.caption("Click below if tutors uploaded files directly into your Google Drive folders.")
-            
-            if st.button("🔄 Sync All Files from Google Drive", type="primary"):
-                with st.spinner("Scanning Google Drive folders and downloading new files..."):
-                    total_synced = 0
-                    for f_key in ["theory", "practical", "zips"]:
-                        count, msg = sync_drive_folder_to_local(f_key)
-                        total_synced += count
-                        st.info(msg)
-                    
-                    st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded and ready for search!")
-
-            st.markdown("---")
             
             # --- MANUAL SINGLE FILE UPLOAD ---
             st.subheader("📤 Single File Direct Upload")
@@ -621,14 +655,14 @@ with tab5:
 
 
 # ==========================================
-# 8. FOOTER
+# 7. FOOTER
 # ==========================================
 st.markdown("---")
 st.markdown(
     """
     <div style="text-align: center; width: 100%;">
         <p style="font-size: 20px; font-weight: bold; margin-bottom: 5px;">✨ Digital 9626 Information Technology Resource Portal ✨</p>
-        <p style="color: gray; font-size: 14px;">Creator: HNHaziqah Computer Science PTES</p>
+        <p style="color: gray; font-size: 14px;">Developer: HNHaziqah @ HHartini Computer Science PTES</p>
     </div>
     """,
     unsafe_allow_html=True
