@@ -10,7 +10,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-# Google API Libraries (Using Service Account Credentials)
+# Google API Libraries (Service Account)
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
@@ -20,7 +20,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 # ==========================================
 SYLLABUS_CODE = "9626"
 
-# Google Drive Folder IDs mapped to your live Google Drive folders
+# Google Drive Folder IDs mapped to live Google Drive folders
 FOLDER_IDS = {
     "theory": "1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB",     # Theory Papers (P1 & P3)
     "practical": "1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7",  # Practical Papers (P2 & P4)
@@ -39,44 +39,16 @@ for folder_path in LOCAL_FOLDERS.values():
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
-
 # ==========================================
-# 2. AUTOMATIC ROUTING & GOOGLE DRIVE API
+# 2. GOOGLE DRIVE API & HELPER FUNCTIONS
 # ==========================================
-def determine_target_folder(filename: str) -> tuple[str, str]:
-    """
-    Analyzes the filename using Regular Expressions to determine target folder.
-    Returns a tuple of (folder_key, folder_display_name).
-    """
-    filename_lower = filename.lower()
-    
-    # 1. Zip / Source Files
-    if filename_lower.endswith(".zip") or "_sf_" in filename_lower:
-        return "zips", "9626_zips (Source Files)"
-        
-    # 2. Practical Papers (Papers 02 and 04)
-    if re.search(r'_(qp|ms)_0[24]\b', filename_lower):
-        return "practical", "9626_practical (Papers 2 & 4)"
-        
-    # 3. Theory Papers (Papers 11, 12, 13, 31, 32, 33)
-    if re.search(r'_(qp|ms)_(1[123]|3[123])\b', filename_lower):
-        return "theory", "9626_theory (Papers 1 & 3)"
-        
-    return None, None
-
-
 def build_drive_service():
     """
     Authenticates with Google Drive API using Service Account Credentials stored in Streamlit Secrets.
     """
     try:
-        # Full access scope required for searching, downloading, and uploading files
         SCOPES = ['https://www.googleapis.com/auth/drive']
-        
-        # Parse service account secrets from Streamlit secrets dictionary
         service_account_info = dict(st.secrets["gcp_service_account"])
-        
-        # Build Service Account Credentials instance
         creds = Credentials.from_service_account_info(
             service_account_info, 
             scopes=SCOPES
@@ -86,10 +58,9 @@ def build_drive_service():
         st.error(f"❌ Authentication Configuration Error: {e}")
         return None
 
-
 def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
     """
-    Uploads file binary stream directly to Google Drive using Service Account Credentials.
+    Uploads file binary stream directly to a specified Google Drive folder ID.
     """
     service = build_drive_service()
     if not service:
@@ -97,12 +68,10 @@ def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
 
     try:
         file_stream = io.BytesIO(file_bytes)
-        
         file_metadata = {
             'name': filename,
             'parents': [folder_id]
         }
-        
         media = MediaIoBaseUpload(
             file_stream, 
             mimetype=mime_type, 
@@ -116,11 +85,9 @@ def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
         ).execute()
 
         return uploaded_file
-
     except Exception as error:
-        st.error(f"❌ Drive API Upload Failed: {error}")
+        st.error(f"❌ Drive API Upload Failed for {filename}: {error}")
         return None
-
 
 def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
     """
@@ -153,14 +120,11 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
                     done = False
                     while not done:
                         status, done = downloader.next_chunk()
-                
                 downloaded_count += 1
 
         return downloaded_count, f"Synced {downloaded_count} new file(s) for folder `{folder_key}`."
-
     except Exception as e:
         return 0, f"Sync error on folder `{folder_key}`: {e}"
-
 
 # ==========================================
 # 3. ADVANCED FLEXIBLE SEARCH ENGINE
@@ -213,26 +177,21 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
                 
     return results
 
-
 def render_pdf_page_image(file_path: str, page_num: int) -> bytes:
     """
     Renders a specific page of a PDF file to PNG byte stream.
     """
     pdf_doc = fitz.open(file_path)
     page = pdf_doc.load_page(page_num)
-    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # Crisp rendering
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
     img_bytes = pix.tobytes("png")
     pdf_doc.close()
     return img_bytes
-
 
 # ==========================================
 # 4. WORD DOCUMENT BUILDER HELPER
 # ==========================================
 def add_page_number_to_header(run):
-    """
-    Inserts a dynamic Word XML page number field into a header text run.
-    """
     fldChar1 = OxmlElement('w:fldChar')
     fldChar1.set(qn('w:fldCharType'), 'begin')
     instrText = OxmlElement('w:instrText')
@@ -251,22 +210,15 @@ def add_page_number_to_header(run):
 
 
 def create_custom_word_handout(basket_items, syllabus_code):
-    """
-    Generates a Word document with custom page and margin settings.
-    """
     doc = Document()
-
-    # Configure Section Page Dimensions & Margins
     for section in doc.sections:
         section.page_width = Inches(8.5)
         section.page_height = Inches(11.5)
-
         section.top_margin = Inches(0.5)
         section.bottom_margin = Inches(0.3)
         section.left_margin = Inches(0.4)
         section.right_margin = Inches(0.4)
 
-        # Header Page Numbering (Top Center)
         header = section.header
         header_para = header.paragraphs[0]
         header_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -276,22 +228,18 @@ def create_custom_word_handout(basket_items, syllabus_code):
         header_run.font.size = Pt(10)
         add_page_number_to_header(header_run)
 
-    # Main Document Header
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_p.add_run(f'PTES {syllabus_code} IT Handout Worksheets')
     title_run.font.bold = True
     title_run.font.size = Pt(14)
 
-    # Process saved pages
     for idx, item in enumerate(basket_items):
         h = doc.add_heading(f"Source: {item['file']} (Page {item['page'] + 1})", level=2)
         h.paragraph_format.space_before = Pt(4)
         h.paragraph_format.space_after = Pt(4)
 
         img_data = io.BytesIO(render_pdf_page_image(item['path'], item['page']))
-
-        # Single image insert with proportional scaling (Width = 6.5")
         doc.add_picture(img_data, width=Inches(6.5))
 
         if idx < len(basket_items) - 1:
@@ -309,8 +257,10 @@ if 'theory_results' not in st.session_state:
     st.session_state.theory_results = []
 if 'practical_results' not in st.session_state:
     st.session_state.practical_results = []
+if 'manual_sync_message' not in st.session_state:
+    st.session_state.manual_sync_message = None
 
-# --- AUTO-SYNC PROCEDURE ON PORTAL WAKE UP / STARTUP ---
+# Auto-Sync Procedure on Startup
 if 'has_auto_synced' not in st.session_state:
     st.session_state.has_auto_synced = False
 
@@ -321,82 +271,45 @@ if not st.session_state.has_auto_synced:
             count, _ = sync_drive_folder_to_local(f_key)
             total_auto_synced += count
         
-        # Mark auto-sync complete so it only executes once per user session
         st.session_state.has_auto_synced = True
-        
         if total_auto_synced > 0:
             st.toast(f"🔄 Auto-Sync Complete: Downloaded {total_auto_synced} new file(s)!")
-
 
 # ==========================================
 # 6. STREAMLIT UI LAYOUT & STYLING
 # ==========================================
 st.set_page_config(page_title="9626 IT Resource Platform", layout="wide")
 
-MAIN_BG_COLOR = "#f9f0ee"     # Main screen background color
-SIDEBAR_BG_COLOR = "#FFFDD0"  # Sidebar background color
-INPUT_BG_COLOR = "#FA8FEB"    # Input box background color (Pink)
-INPUT_BORDER_COLOR = "#1A1A1A" # Dark border color
+MAIN_BG_COLOR = "#f9f0ee"
+SIDEBAR_BG_COLOR = "#FFFDD0"
+INPUT_BG_COLOR = "#FA8FEB"
+INPUT_BORDER_COLOR = "#1A1A1A"
 
 st.markdown(
     f"""
     <style>
-    /* Main application background */
-    .stAppViewContainer {{
-        background-color: {MAIN_BG_COLOR} !important;
-    }}
+    .stAppViewContainer {{ background-color: {MAIN_BG_COLOR} !important; }}
+    .stHeader {{ background-color: {MAIN_BG_COLOR} !important; }}
+    [data-testid="stSidebar"] {{ background-color: {SIDEBAR_BG_COLOR} !important; }}
     
-    /* Top sticky header background */
-    .stHeader {{
-        background-color: {MAIN_BG_COLOR} !important;
-    }}
-
-    /* Sidebar background color */
-    [data-testid="stSidebar"] {{
-        background-color: {SIDEBAR_BG_COLOR} !important;
-    }}
-
-    /* Text Inputs & Selectboxes */
-    div[data-baseweb="input"], 
-    div[data-baseweb="base-input"],
-    .stTextInput input, 
-    .stPasswordInput input {{
+    div[data-baseweb="input"], div[data-baseweb="base-input"],
+    .stTextInput input, .stPasswordInput input {{
         background-color: {INPUT_BG_COLOR} !important;
         border: 2px solid {INPUT_BORDER_COLOR} !important;
         border-radius: 8px !important;
         color: #000000 !important;
         font-weight: 600 !important;
     }}
-
-    div[data-baseweb="input"] > input {{
-        background-color: transparent !important;
-    }}
-
-    .stSelectbox div[data-baseweb="select"],
-    div[data-baseweb="select"] > div {{
+    div[data-baseweb="input"] > input {{ background-color: transparent !important; }}
+    
+    .stSelectbox div[data-baseweb="select"], div[data-baseweb="select"] > div {{
         background-color: {INPUT_BG_COLOR} !important;
         border: 5px solid {INPUT_BORDER_COLOR} !important;
         border-radius: 10px !important;
     }}
-
-    .stSelectbox span,
-    div[data-baseweb="select"] span {{
-        color: #6D3761 !important;
-        font-weight: 600 !important;
-    }}
-
-    .stSelectbox svg,
-    div[data-baseweb="select"] svg {{
-        fill: #6D3761 !important;
-    }}
-
-    /* Custom expander styling */
-    .stExpander {{
-        background-color: #ffffff;
-        border-radius: 10px;
-        border: 1px solid #e0e0e0;
-        margin-bottom: 8px;
-    }}
+    .stSelectbox span, div[data-baseweb="select"] span {{ color: #6D3761 !important; font-weight: 600 !important; }}
+    .stSelectbox svg, div[data-baseweb="select"] svg {{ fill: #6D3761 !important; }}
+    .stExpander {{ background-color: #ffffff; border-radius: 10px; border: 1px solid #e0e0e0; margin-bottom: 8px; }}
     </style>
     """,
     unsafe_allow_html=True
@@ -406,7 +319,7 @@ st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
 # ==========================================
-# SIDEBAR: BASKET SUMMARY & MANUAL DRIVE SYNC
+# SIDEBAR: BASKET & MANUAL DRIVE SYNC
 # ==========================================
 with st.sidebar:
     st.header("🛒 Handout Basket Summary")
@@ -420,28 +333,35 @@ with st.sidebar:
     st.header("🔄 Google Drive Sync")
     st.caption("Sync locally mirrored files with Google Drive.")
     
-    # MANUAL SYNC PROCEDURE (TRIGGERED VIA BUTTON CLICK)
+    # MANUAL SYNC ACTION BUTTON
     if st.button("🔄 Sync All Files from Google Drive", type="primary", key="sb_sync_btn"):
         with st.spinner("Scanning Google Drive folders and downloading new files..."):
             total_synced = 0
             for f_key in ["theory", "practical", "zips"]:
                 count, msg = sync_drive_folder_to_local(f_key)
                 total_synced += count
-                st.info(msg)
             
-            st.success(f"🎉 Sync Complete! **{total_synced}** new file(s) downloaded!")
+            # Store sync status response message in state
+            if total_synced > 0:
+                st.session_state.manual_sync_message = f"✅ Success! Synced {total_synced} new file(s) from Google Drive."
+            else:
+                st.session_state.manual_sync_message = "✅ All local files are already fully up to date with Google Drive!"
 
-# Application Navigation Tabs
+    # FEATURE: RESPONSE TEXT / MESSAGE DISPLAYED DIRECTLY AT BOTTOM OF SYNC BUTTON
+    if st.session_state.manual_sync_message:
+        st.success(st.session_state.manual_sync_message)
+
+# Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔍 Theory Search(P1&P3)", 
-    "⚙️ Practical Search(P2&P4)", 
+    "🔍 Theory Search", 
+    "⚙️ Practical Search", 
     "🛒 Handout Cart", 
-    "📦 Source Files(ZIP)", 
-    "🔒 Admin Panel"
+    "📦 Source Files", 
+    "🔒 Upload PYP Admin"
 ])
 
 
-# --- TAB 1: THEORY SEARCH (P1 & P3) ---
+# --- TAB 1: THEORY SEARCH ---
 with tab1:
     st.header("Search Theory Papers (Paper 1 & Paper 3)")
     st.caption("Variants: Paper 1 (11, 12, 13) | Paper 3 (31, 32, 33)")
@@ -464,20 +384,16 @@ with tab1:
             
             with st.expander(label):
                 col_img, col_actions = st.columns([3, 1])
-                
                 with col_img:
                     img_data = render_pdf_page_image(item['path'], item['page'])
                     st.image(img_data, use_container_width=True)
-
                 with col_actions:
                     st.write("### Actions")
                     if st.button("➕ Add to Basket", key=f"add_t1_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
                         st.rerun()
-
                     st.markdown("---")
-                    
                     with open(item['path'], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -488,7 +404,7 @@ with tab1:
                         )
 
 
-# --- TAB 2: PRACTICAL SEARCH (P2 & P4) ---
+# --- TAB 2: PRACTICAL SEARCH ---
 with tab2:
     st.header("Search Practical Papers (Paper 2 & Paper 4)")
     st.caption("Variants: Paper 2 (02) | Paper 4 (04)")
@@ -511,20 +427,16 @@ with tab2:
             
             with st.expander(label):
                 col_img, col_actions = st.columns([3, 1])
-                
                 with col_img:
                     img_data = render_pdf_page_image(item['path'], item['page'])
                     st.image(img_data, use_container_width=True)
-
                 with col_actions:
                     st.write("### Actions")
                     if st.button("➕ Add to Basket", key=f"add_t2_{idx}", type="primary"):
                         st.session_state.handout_basket.append(item)
                         st.toast(f"Added {item['file']} (P.{item['page']+1}) to basket!")
                         st.rerun()
-
                     st.markdown("---")
-
                     with open(item['path'], "rb") as pdf_f:
                         st.download_button(
                             label="📥 Download Full PDF",
@@ -535,7 +447,7 @@ with tab2:
                         )
 
 
-# --- TAB 3: HANDOUT BASKET / CART ---
+# --- TAB 3: HANDOUT BASKET ---
 with tab3:
     st.header("Worksheet / Handout Builder")
     if st.session_state.handout_basket:
@@ -552,7 +464,6 @@ with tab3:
         if st.button("🪄 Export Handout to Word Document", type="primary"):
             with st.spinner("Building custom Word document..."):
                 doc = create_custom_word_handout(st.session_state.handout_basket, SYLLABUS_CODE)
-                
                 target_filename = f"{SYLLABUS_CODE}_IT_Handout.docx"
                 doc_buffer = io.BytesIO()
                 doc.save(doc_buffer)
@@ -568,7 +479,7 @@ with tab3:
         st.info("Your basket is empty. Add pages from Tab 1 or Tab 2.")
 
 
-# --- TAB 4: SOURCE FILES (ZIP) ---
+# --- TAB 4: SOURCE FILES ---
 with tab4:
     st.header("Download Practical Source Files (ZIP)")
     c1, c2, c3 = st.columns(3)
@@ -599,63 +510,94 @@ with tab4:
         st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Use the Admin Sync button to pull newly uploaded files from Drive.")
 
 
-# --- TAB 5: ADMIN PANEL ---
+# --- TAB 5: ADMIN PANEL (WITH 3 TARGETED BULK UPLOAD BUTTONS) ---
 with tab5:
-    st.header("Admin Panel")
+    st.header("🔒 Admin Panel")
 
     admin_password = st.secrets.get("ADMIN_PASSWORD")
 
     if not admin_password:
-        st.error(
-            "🚨 `ADMIN_PASSWORD` is not configured in your Streamlit Secrets. "
-            "Please add `ADMIN_PASSWORD = 'your_password'` to your secrets configuration."
-        )
+        st.error("🚨 `ADMIN_PASSWORD` is not configured in your Streamlit Secrets.")
     else:
         pwd = st.text_input("Enter Your Admin Password", type="password")
 
         if pwd == admin_password:
-            st.success("Admin Access Granted")
-            
-            # --- MANUAL SINGLE FILE UPLOAD ---
-            st.subheader("📤 Single File Direct Upload")
-            uploaded_file = st.file_uploader("Browse Past Paper PDF or Source File (ZIP)", type=["pdf", "zip"])
+            st.success("🔓 Admin Access Granted")
+            st.markdown("---")
+            st.subheader("📤 Target Bulk Folder Uploads")
+            st.caption("Upload single or multiple files directly to specific target Google Drive folders and local storage.")
 
-            if uploaded_file is not None:
-                folder_key, folder_name = determine_target_folder(uploaded_file.name)
+            col1, col2, col3 = st.columns(3)
 
-                if folder_key is None:
-                    st.warning(
-                        f"⚠️ Filename `{uploaded_file.name}` does not match Cambridge naming conventions. "
-                        "Expected formats: `9626_m19_qp_12.pdf`, `9626_s20_qp_02.pdf`, or `9626_s20_sf_02.zip`."
-                    )
-                else:
-                    st.info(f"🎯 Target Destination Detected: **{folder_name}**")
+            # Helper function for bulk uploading to a specific target
+            def process_bulk_upload(uploaded_files, folder_key, folder_label):
+                if uploaded_files:
+                    target_drive_id = FOLDER_IDS[folder_key]
+                    local_dir = LOCAL_FOLDERS[folder_key]
+                    
+                    success_count = 0
+                    with st.spinner(f"Uploading {len(uploaded_files)} file(s) to {folder_label}..."):
+                        for f in uploaded_files:
+                            bytes_data = f.read()
+                            # 1. Mirror Locally
+                            local_save_path = os.path.join(local_dir, f.name)
+                            with open(local_save_path, "wb") as out_f:
+                                out_f.write(bytes_data)
+                            
+                            # 2. Upload to Drive
+                            drive_res = upload_file_to_drive(bytes_data, f.name, target_drive_id, f.type)
+                            if drive_res:
+                                success_count += 1
+                    
+                    st.success(f"🎉 Successfully uploaded **{success_count}/{len(uploaded_files)}** files to `{folder_label}`!")
 
-                    if st.button("🚀 Upload File to Drive & Mirror Locally"):
-                        with st.spinner("Processing file..."):
-                            file_bytes = uploaded_file.read()
+            # 1. BUTTON / UPLOADER: THEORY FOLDER
+            with col1:
+                st.markdown("### 📄 Theory Papers")
+                st.caption("Target: `9626_theory` (P1 & P3)")
+                theory_files = st.file_uploader(
+                    "Select Theory PDF(s)", 
+                    type=["pdf"], 
+                    accept_multiple_files=True, 
+                    key="admin_up_theory"
+                )
+                if st.button("🚀 Upload to Theory Folder", key="btn_up_theory"):
+                    if theory_files:
+                        process_bulk_upload(theory_files, "theory", "Theory Folder")
+                    else:
+                        st.warning("Please select at least one Theory file.")
 
-                            # 1. Save locally for instant search access
-                            local_dest_dir = LOCAL_FOLDERS[folder_key]
-                            local_save_path = os.path.join(local_dest_dir, uploaded_file.name)
-                            with open(local_save_path, "wb") as f:
-                                f.write(file_bytes)
-                            st.info(f"📁 Mirrored file locally to `{local_dest_dir}/{uploaded_file.name}`.")
+            # 2. BUTTON / UPLOADER: PRACTICAL FOLDER
+            with col2:
+                st.markdown("### 💻 Practical Papers")
+                st.caption("Target: `9626_practical` (P2 & P4)")
+                practical_files = st.file_uploader(
+                    "Select Practical PDF(s)", 
+                    type=["pdf"], 
+                    accept_multiple_files=True, 
+                    key="admin_up_practical"
+                )
+                if st.button("🚀 Upload to Practical Folder", key="btn_up_practical"):
+                    if practical_files:
+                        process_bulk_upload(practical_files, "practical", "Practical Folder")
+                    else:
+                        st.warning("Please select at least one Practical file.")
 
-                            # 2. Upload to Google Drive
-                            target_drive_folder_id = FOLDER_IDS[folder_key]
-                            drive_result = upload_file_to_drive(
-                                file_bytes, 
-                                uploaded_file.name, 
-                                target_drive_folder_id, 
-                                uploaded_file.type
-                            )
-
-                            if drive_result:
-                                st.success(f"✅ Successfully uploaded `{uploaded_file.name}` to Google Drive!")
-                                st.markdown(f"[🔗 View File in Google Drive]({drive_result.get('webViewLink')})")
-                            else:
-                                st.error("❌ Failed to upload to Google Drive. Check your connection or secrets.")
+            # 3. BUTTON / UPLOADER: SOURCE FILES FOLDER
+            with col3:
+                st.markdown("### 📦 Source Files")
+                st.caption("Target: `9626_zips` (.zip files)")
+                zip_files = st.file_uploader(
+                    "Select Source File ZIP(s)", 
+                    type=["zip"], 
+                    accept_multiple_files=True, 
+                    key="admin_up_zips"
+                )
+                if st.button("🚀 Upload to Source Files Folder", key="btn_up_zips"):
+                    if zip_files:
+                        process_bulk_upload(zip_files, "zips", "Source Files Folder")
+                    else:
+                        st.warning("Please select at least one ZIP file.")
 
 
 # ==========================================
