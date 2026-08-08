@@ -13,90 +13,63 @@ from docx.oxml.ns import qn
 # Google API Libraries (Service Account)
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from googleapiclient.http import MediaIoBaseDownload
 
 # ==========================================
 # 1. CONFIGURATION & DRIVE FOLDER MAPPING
 # ==========================================
 SYLLABUS_CODE = "9626"
 
-# Google Drive Folder IDs mapped to live Google Drive folders
 FOLDER_IDS = {
     "theory": "1T1sIqRKxF5aO_r0sCyIVxidt0TyXOCcB",     # Theory Papers (P1 & P3)
     "practical": "1EWBiwjvTc12LVtyNi2V9P9RSr8d2vgq7",  # Practical Papers (P2 & P4)
     "zips": "1AsXq8TktyqajB7XTa9SQ5f85Pr6CQcFJ"          # Source Files (.zip)
 }
 
-# Local directories for mirroring files locally on the server
 LOCAL_FOLDERS = {
     "theory": "9626_theory",
     "practical": "9626_practical",
     "zips": "9626_zips"
 }
 
-# Ensure local storage directories exist on server startup
+# Safely create directories on server start
 for folder_path in LOCAL_FOLDERS.values():
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
+    os.makedirs(folder_path, exist_ok=True)
+
 
 # ==========================================
 # 2. GOOGLE DRIVE API & HELPER FUNCTIONS
 # ==========================================
-def build_drive_service():
+@st.cache_resource(show_spinner=False)
+def get_cached_drive_service():
     """
-    Authenticates with Google Drive API using Service Account Credentials stored in Streamlit Secrets.
+    Creates and caches the Google Drive API client using Service Account Secrets.
     """
+    if "gcp_service_account" not in st.secrets:
+        return None
+
     try:
         SCOPES = ['https://www.googleapis.com/auth/drive']
         service_account_info = dict(st.secrets["gcp_service_account"])
+        
+        if "private_key" in service_account_info:
+            service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
+
         creds = Credentials.from_service_account_info(
             service_account_info, 
             scopes=SCOPES
         )
         return build('drive', 'v3', credentials=creds)
     except Exception as e:
-        st.error(f"❌ Authentication Configuration Error: {e}")
+        st.error(f"❌ Service Account Auth Error: {e}")
         return None
 
-def upload_file_to_drive(file_bytes, filename, folder_id, mime_type):
-    """
-    Uploads file binary stream directly to a specified Google Drive folder ID.
-    """
-    service = build_drive_service()
-    if not service:
-        return None
-
-    try:
-        file_stream = io.BytesIO(file_bytes)
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
-        }
-        media = MediaIoBaseUpload(
-            file_stream, 
-            mimetype=mime_type, 
-            resumable=True
-        )
-
-        uploaded_file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, webViewLink'
-        ).execute()
-
-        return uploaded_file
-    except Exception as error:
-        st.error(f"❌ Drive API Upload Failed for {filename}: {error}")
-        return None
 
 def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
-    """
-    Queries Google Drive for a specific folder and downloads any files missing locally.
-    Returns (downloaded_count, status_message).
-    """
-    service = build_drive_service()
+    """Downloads missing files from Google Drive to local directories."""
+    service = get_cached_drive_service()
     if not service:
-        return 0, "Failed to authenticate with Google Drive."
+        return 0, "Drive authentication uninitialized."
 
     drive_folder_id = FOLDER_IDS[folder_key]
     local_path = LOCAL_FOLDERS[folder_key]
@@ -107,7 +80,6 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
         drive_files = results.get('files', [])
 
         downloaded_count = 0
-
         for file_info in drive_files:
             file_name = file_info['name']
             file_id = file_info['id']
@@ -119,20 +91,18 @@ def sync_drive_folder_to_local(folder_key: str) -> tuple[int, str]:
                     downloader = MediaIoBaseDownload(f, request)
                     done = False
                     while not done:
-                        status, done = downloader.next_chunk()
+                        _, done = downloader.next_chunk()
                 downloaded_count += 1
 
-        return downloaded_count, f"Synced {downloaded_count} new file(s) for folder `{folder_key}`."
+        return downloaded_count, f"Synced {downloaded_count} new file(s) for `{folder_key}`."
     except Exception as e:
-        return 0, f"Sync error on folder `{folder_key}`: {e}"
+        return 0, f"Sync error on `{folder_key}`: {e}"
+
 
 # ==========================================
-# 3. ADVANCED FLEXIBLE SEARCH ENGINE
+# 3. SEARCH & RENDERING ENGINE
 # ==========================================
 def search_pdfs(keyword_list, folder_path, allowed_variants):
-    """
-    Scans local PDF files for keywords using flexible, case-insensitive matching.
-    """
     results = []
     if not os.path.exists(folder_path):
         return results
@@ -144,9 +114,7 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
     for file in os.listdir(folder_path):
         if file.endswith(".pdf"):
             base_name = os.path.splitext(file)[0]
-            
-            is_valid_variant = any(base_name.endswith(f"_{variant}") for variant in allowed_variants)
-            if not is_valid_variant:
+            if not any(base_name.endswith(f"_{variant}") for variant in allowed_variants):
                 continue
 
             filepath = os.path.join(folder_path, file)
@@ -154,16 +122,13 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
                 doc = fitz.open(filepath)
                 for page_num in range(len(doc)):
                     page_text = doc[page_num].get_text()
-                    
                     matches_all = True
                     for kw in cleaned_keywords:
                         escaped_kw = re.escape(kw)
                         pattern = r'\b' + escaped_kw + r'(s|es)?\b'
-                        
                         if not re.search(pattern, page_text, re.IGNORECASE) and kw not in page_text.lower():
                             matches_all = False
                             break
-                    
                     if matches_all:
                         results.append({
                             "file": file,
@@ -174,13 +139,10 @@ def search_pdfs(keyword_list, folder_path, allowed_variants):
                 doc.close()
             except Exception:
                 continue
-                
     return results
 
+
 def render_pdf_page_image(file_path: str, page_num: int) -> bytes:
-    """
-    Renders a specific page of a PDF file to PNG byte stream.
-    """
     pdf_doc = fitz.open(file_path)
     page = pdf_doc.load_page(page_num)
     pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
@@ -188,8 +150,9 @@ def render_pdf_page_image(file_path: str, page_num: int) -> bytes:
     pdf_doc.close()
     return img_bytes
 
+
 # ==========================================
-# 4. WORD DOCUMENT BUILDER HELPER
+# 4. WORD DOCUMENT HANDOUT BUILDER
 # ==========================================
 def add_page_number_to_header(run):
     fldChar1 = OxmlElement('w:fldChar')
@@ -249,7 +212,7 @@ def create_custom_word_handout(basket_items, syllabus_code):
 
 
 # ==========================================
-# 5. APP STATE INITIALIZATION & AUTO-SYNC
+# 5. STATE INITIALIZATION & SAFE AUTO-SYNC
 # ==========================================
 if 'handout_basket' not in st.session_state:
     st.session_state.handout_basket = []
@@ -260,20 +223,15 @@ if 'practical_results' not in st.session_state:
 if 'manual_sync_message' not in st.session_state:
     st.session_state.manual_sync_message = None
 
-# Auto-Sync Procedure on Startup
 if 'has_auto_synced' not in st.session_state:
-    st.session_state.has_auto_synced = False
+    st.session_state.has_auto_synced = True
+    total_auto_synced = 0
+    for f_key in ["theory", "practical", "zips"]:
+        count, _ = sync_drive_folder_to_local(f_key)
+        total_auto_synced += count
+    if total_auto_synced > 0:
+        st.toast(f"🔄 Auto-Sync Complete: Downloaded {total_auto_synced} new file(s)!")
 
-if not st.session_state.has_auto_synced:
-    with st.spinner("⚡ Portal waking up: Syncing latest files from Google Drive..."):
-        total_auto_synced = 0
-        for f_key in ["theory", "practical", "zips"]:
-            count, _ = sync_drive_folder_to_local(f_key)
-            total_auto_synced += count
-        
-        st.session_state.has_auto_synced = True
-        if total_auto_synced > 0:
-            st.toast(f"🔄 Auto-Sync Complete: Downloaded {total_auto_synced} new file(s)!")
 
 # ==========================================
 # 6. STREAMLIT UI LAYOUT & STYLING
@@ -319,7 +277,7 @@ st.title("BRUNEI FORM SIXTH CENTRE")
 st.subheader("💻 9626 Information Technology PYP Resources")
 
 # ==========================================
-# SIDEBAR: BASKET & MANUAL DRIVE SYNC
+# SIDEBAR
 # ==========================================
 with st.sidebar:
     st.header("🛒 Handout Basket Summary")
@@ -333,7 +291,6 @@ with st.sidebar:
     st.header("🔄 Google Drive Sync")
     st.caption("Sync locally mirrored files with Google Drive.")
     
-    # MANUAL SYNC ACTION BUTTON
     if st.button("🔄 Sync All Files from Google Drive", type="primary", key="sb_sync_btn"):
         with st.spinner("Scanning Google Drive folders and downloading new files..."):
             total_synced = 0
@@ -341,23 +298,21 @@ with st.sidebar:
                 count, msg = sync_drive_folder_to_local(f_key)
                 total_synced += count
             
-            # Store sync status response message in state
             if total_synced > 0:
                 st.session_state.manual_sync_message = f"✅ Success! Synced {total_synced} new file(s) from Google Drive."
             else:
                 st.session_state.manual_sync_message = "✅ All local files are already fully up to date with Google Drive!"
 
-    # FEATURE: RESPONSE TEXT / MESSAGE DISPLAYED DIRECTLY AT BOTTOM OF SYNC BUTTON
     if st.session_state.manual_sync_message:
         st.success(st.session_state.manual_sync_message)
 
 # Navigation Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🔍 Theory Search", 
-    "⚙️ Practical Search", 
+    "🔍 Theory Search(P1&P3)", 
+    "⚙️ Practical Search(P2&P4)", 
     "🛒 Handout Cart", 
-    "📦 Source Files", 
-    "🔒 Upload PYP Admin"
+    "📦 Source Files(ZIP)", 
+    "🔒 Admin Panel"
 ])
 
 
@@ -510,7 +465,7 @@ with tab4:
         st.warning(f"Source file `{expected_zip_name}` is not available locally in `{LOCAL_FOLDERS['zips']}`. Use the Admin Sync button to pull newly uploaded files from Drive.")
 
 
-# --- TAB 5: ADMIN PANEL (WITH 3 TARGETED BULK UPLOAD BUTTONS) ---
+# --- TAB 5: ADMIN PANEL ---
 with tab5:
     st.header("🔒 Admin Panel")
 
@@ -524,80 +479,34 @@ with tab5:
         if pwd == admin_password:
             st.success("🔓 Admin Access Granted")
             st.markdown("---")
-            st.subheader("📤 Target Bulk Folder Uploads")
-            st.caption("Upload single or multiple files directly to specific target Google Drive folders and local storage.")
+            st.subheader("📁 Quick Access to Google Drive Folders")
+            st.caption("Click any button below to open the corresponding Google Drive folder in a new tab. You can upload files directly in bulk from Google Drive!")
 
             col1, col2, col3 = st.columns(3)
 
-            # Helper function for bulk uploading to a specific target
-            def process_bulk_upload(uploaded_files, folder_key, folder_label):
-                if uploaded_files:
-                    target_drive_id = FOLDER_IDS[folder_key]
-                    local_dir = LOCAL_FOLDERS[folder_key]
-                    
-                    success_count = 0
-                    with st.spinner(f"Uploading {len(uploaded_files)} file(s) to {folder_label}..."):
-                        for f in uploaded_files:
-                            bytes_data = f.read()
-                            # 1. Mirror Locally
-                            local_save_path = os.path.join(local_dir, f.name)
-                            with open(local_save_path, "wb") as out_f:
-                                out_f.write(bytes_data)
-                            
-                            # 2. Upload to Drive
-                            drive_res = upload_file_to_drive(bytes_data, f.name, target_drive_id, f.type)
-                            if drive_res:
-                                success_count += 1
-                    
-                    st.success(f"🎉 Successfully uploaded **{success_count}/{len(uploaded_files)}** files to `{folder_label}`!")
-
-            # 1. BUTTON / UPLOADER: THEORY FOLDER
+            # 1. BUTTON: THEORY FOLDER
             with col1:
                 st.markdown("### 📄 Theory Papers")
-                st.caption("Target: `9626_theory` (P1 & P3)")
-                theory_files = st.file_uploader(
-                    "Select Theory PDF(s)", 
-                    type=["pdf"], 
-                    accept_multiple_files=True, 
-                    key="admin_up_theory"
-                )
-                if st.button("🚀 Upload to Theory Folder", key="btn_up_theory"):
-                    if theory_files:
-                        process_bulk_upload(theory_files, "theory", "Theory Folder")
-                    else:
-                        st.warning("Please select at least one Theory file.")
+                st.caption("Target Component: Papers 1 & 3")
+                theory_drive_url = f"https://drive.google.com/drive/folders/{FOLDER_IDS['theory']}"
+                st.link_button("📂 Open Theory Folder", theory_drive_url, type="primary", use_container_width=True)
 
-            # 2. BUTTON / UPLOADER: PRACTICAL FOLDER
+            # 2. BUTTON: PRACTICAL FOLDER
             with col2:
                 st.markdown("### 💻 Practical Papers")
-                st.caption("Target: `9626_practical` (P2 & P4)")
-                practical_files = st.file_uploader(
-                    "Select Practical PDF(s)", 
-                    type=["pdf"], 
-                    accept_multiple_files=True, 
-                    key="admin_up_practical"
-                )
-                if st.button("🚀 Upload to Practical Folder", key="btn_up_practical"):
-                    if practical_files:
-                        process_bulk_upload(practical_files, "practical", "Practical Folder")
-                    else:
-                        st.warning("Please select at least one Practical file.")
+                st.caption("Target Component: Papers 2 & 4")
+                practical_drive_url = f"https://drive.google.com/drive/folders/{FOLDER_IDS['practical']}"
+                st.link_button("📂 Open Practical Folder", practical_drive_url, type="primary", use_container_width=True)
 
-            # 3. BUTTON / UPLOADER: SOURCE FILES FOLDER
+            # 3. BUTTON: SOURCE FILES FOLDER
             with col3:
                 st.markdown("### 📦 Source Files")
-                st.caption("Target: `9626_zips` (.zip files)")
-                zip_files = st.file_uploader(
-                    "Select Source File ZIP(s)", 
-                    type=["zip"], 
-                    accept_multiple_files=True, 
-                    key="admin_up_zips"
-                )
-                if st.button("🚀 Upload to Source Files Folder", key="btn_up_zips"):
-                    if zip_files:
-                        process_bulk_upload(zip_files, "zips", "Source Files Folder")
-                    else:
-                        st.warning("Please select at least one ZIP file.")
+                st.caption("Target Component: ZIP Archives")
+                zips_drive_url = f"https://drive.google.com/drive/folders/{FOLDER_IDS['zips']}"
+                st.link_button("📂 Open Source Files Folder", zips_drive_url, type="primary", use_container_width=True)
+
+            st.markdown("---")
+            st.info("💡 **Next Step after uploading:** Once you have added or updated files in Google Drive, use the **'Sync All Files from Google Drive'** button in the left sidebar to update the local portal cache.")
 
 
 # ==========================================
