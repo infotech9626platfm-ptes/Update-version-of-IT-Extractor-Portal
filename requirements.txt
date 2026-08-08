@@ -1,7 +1,5 @@
-streamlit
-pymupdf
-python-docx
-google-api-python-client
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
+streamlit>=1.30.0
+PyMuPDF>=1.23.0
+python-docx>=1.0.0
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
